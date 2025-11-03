@@ -1,3 +1,4 @@
+import { useState, useMemo } from "react";
 import { Users, Calendar, DollarSign, TrendingUp, TrendingDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
@@ -18,22 +19,133 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { store } from "@/lib/store";
+import { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval, parseISO } from "date-fns";
+import { ru } from "date-fns/locale";
 
-const revenueData = [
-  { date: "03 нояб.", value: 0 },
-  { date: "04 нояб.", value: 0 },
-];
-
-const appointmentsData = [
-  { date: "03 нояб.", value: 9 },
-  { date: "04 нояб.", value: 2 },
-];
-
-const doctorStats = [
-  { name: "Врач", appointments: "Приемов", revenue: "Доход", avgCheck: "Средний чек" },
-];
+type PeriodType = "today" | "week" | "month" | "year" | "custom";
 
 const Analytics = () => {
+  const [period, setPeriod] = useState<PeriodType>("month");
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string>("all");
+
+  const doctors = store.getDoctors();
+  const patients = store.getPatients();
+  const visits = store.getVisits();
+
+  // Get date range based on period
+  const getDateRange = (): [Date, Date] => {
+    const now = new Date();
+    switch (period) {
+      case "today":
+        return [startOfDay(now), endOfDay(now)];
+      case "week":
+        return [startOfWeek(now, { locale: ru }), endOfWeek(now, { locale: ru })];
+      case "month":
+        return [startOfMonth(now), endOfMonth(now)];
+      case "year":
+        return [startOfYear(now), endOfYear(now)];
+      default:
+        return [startOfMonth(now), endOfMonth(now)];
+    }
+  };
+
+  const [dateFrom, dateTo] = getDateRange();
+
+  // Filter visits by date range and doctor
+  const filteredVisits = useMemo(() => {
+    return visits.filter((visit) => {
+      const visitDate = parseISO(visit.startTime);
+      const inRange = isWithinInterval(visitDate, {
+        start: dateFrom,
+        end: dateTo,
+      });
+      const doctorMatch = selectedDoctorId === "all" || visit.doctorId === selectedDoctorId;
+      return inRange && doctorMatch && visit.status !== "cancelled";
+    });
+  }, [visits, dateFrom, dateTo, selectedDoctorId]);
+
+  // Calculate summary metrics
+  const metrics = useMemo(() => {
+    const totalPatients = patients.length;
+    const totalAppointments = filteredVisits.length;
+    const totalIncome = filteredVisits.reduce((sum, v) => sum + v.cost, 0);
+    const totalPaid = filteredVisits.reduce(
+      (sum, v) => sum + (v.payments?.reduce((p, pay) => p + pay.amount, 0) || 0),
+      0
+    );
+    const totalUnpaid = totalIncome - totalPaid;
+
+    return {
+      totalPatients,
+      totalAppointments,
+      totalIncome,
+      totalPaid,
+      totalUnpaid,
+    };
+  }, [patients, filteredVisits]);
+
+  // Prepare chart data
+  const chartData = useMemo(() => {
+    const dataMap = new Map<string, { revenue: number; appointments: number }>();
+
+    filteredVisits.forEach((visit) => {
+      const dateKey = format(parseISO(visit.startTime), "d MMM", { locale: ru });
+      const existing = dataMap.get(dateKey) || { revenue: 0, appointments: 0 };
+      dataMap.set(dateKey, {
+        revenue: existing.revenue + visit.cost,
+        appointments: existing.appointments + 1,
+      });
+    });
+
+    return Array.from(dataMap.entries())
+      .map(([date, values]) => ({
+        date,
+        revenue: values.revenue,
+        appointments: values.appointments,
+      }))
+      .sort((a, b) => {
+        const dateA = parseISO(a.date.split(" ")[1] + " " + a.date.split(" ")[0]);
+        const dateB = parseISO(b.date.split(" ")[1] + " " + b.date.split(" ")[0]);
+        return dateA.getTime() - dateB.getTime();
+      });
+  }, [filteredVisits]);
+
+  // Calculate doctor statistics
+  const doctorStats = useMemo(() => {
+    const statsMap = new Map<
+      string,
+      { visits: number; revenue: number; unpaid: number }
+    >();
+
+    filteredVisits.forEach((visit) => {
+      const existing = statsMap.get(visit.doctorId) || {
+        visits: 0,
+        revenue: 0,
+        unpaid: 0,
+      };
+      const paid = visit.payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
+      statsMap.set(visit.doctorId, {
+        visits: existing.visits + 1,
+        revenue: existing.revenue + visit.cost,
+        unpaid: existing.unpaid + (visit.cost - paid),
+      });
+    });
+
+    return Array.from(statsMap.entries())
+      .map(([doctorId, stats]) => {
+        const doctor = doctors.find((d) => d.id === doctorId);
+        return {
+          name: doctor?.name || "Неизвестный",
+          visits: stats.visits,
+          revenue: stats.revenue,
+          avgCheck: stats.visits > 0 ? stats.revenue / stats.visits : 0,
+          unpaid: stats.unpaid,
+        };
+      })
+      .sort((a, b) => b.revenue - a.revenue);
+  }, [filteredVisits, doctors]);
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-[1400px] mx-auto space-y-6">
@@ -42,27 +154,34 @@ const Analytics = () => {
           <div className="flex gap-4">
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Период:</span>
-              <Select defaultValue="month">
+              <Select value={period} onValueChange={(v) => setPeriod(v as PeriodType)}>
                 <SelectTrigger className="w-[180px] bg-secondary border-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="month">Этот месяц</SelectItem>
+                  <SelectItem value="today">Сегодня</SelectItem>
                   <SelectItem value="week">Эта неделя</SelectItem>
+                  <SelectItem value="month">Этот месяц</SelectItem>
                   <SelectItem value="year">Этот год</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">Врач:</span>
-              <Select defaultValue="all">
+              <Select
+                value={selectedDoctorId}
+                onValueChange={setSelectedDoctorId}
+              >
                 <SelectTrigger className="w-[180px] bg-secondary border-0">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Все врачи</SelectItem>
-                  <SelectItem value="1">Jahongir</SelectItem>
-                  <SelectItem value="2">sa</SelectItem>
+                  {doctors.map((doctor) => (
+                    <SelectItem key={doctor.id} value={doctor.id}>
+                      {doctor.name}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -75,7 +194,7 @@ const Analytics = () => {
               <Users className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Пациентов</span>
             </div>
-            <div className="text-3xl font-bold">5</div>
+            <div className="text-3xl font-bold">{metrics.totalPatients}</div>
           </Card>
 
           <Card className="bg-card p-6">
@@ -83,7 +202,7 @@ const Analytics = () => {
               <Calendar className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Приемов</span>
             </div>
-            <div className="text-3xl font-bold">11</div>
+            <div className="text-3xl font-bold">{metrics.totalAppointments}</div>
           </Card>
 
           <Card className="bg-card p-6">
@@ -91,7 +210,9 @@ const Analytics = () => {
               <TrendingUp className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Общий доход</span>
             </div>
-            <div className="text-3xl font-bold">0 смн</div>
+            <div className="text-3xl font-bold">
+              {metrics.totalIncome.toFixed(2)} смн
+            </div>
           </Card>
 
           <Card className="bg-card p-6">
@@ -99,7 +220,9 @@ const Analytics = () => {
               <DollarSign className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Оплачено</span>
             </div>
-            <div className="text-3xl font-bold text-emerald-500">0 смн</div>
+            <div className="text-3xl font-bold text-emerald-500">
+              {metrics.totalPaid.toFixed(2)} смн
+            </div>
           </Card>
 
           <Card className="bg-card p-6">
@@ -107,7 +230,9 @@ const Analytics = () => {
               <TrendingDown className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Не оплачено</span>
             </div>
-            <div className="text-3xl font-bold text-orange-500">0 смн</div>
+            <div className="text-3xl font-bold text-orange-500">
+              {metrics.totalUnpaid.toFixed(2)} смн
+            </div>
           </Card>
         </div>
 
@@ -115,19 +240,9 @@ const Analytics = () => {
           <Card className="bg-card p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold">Доход по дням</h3>
-              <Select defaultValue="days">
-                <SelectTrigger className="w-[120px] bg-secondary border-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="days">По дням</SelectItem>
-                  <SelectItem value="weeks">По неделям</SelectItem>
-                  <SelectItem value="months">По месяцам</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={revenueData}>
+              <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis
                   dataKey="date"
@@ -144,7 +259,7 @@ const Analytics = () => {
                 />
                 <Line
                   type="monotone"
-                  dataKey="value"
+                  dataKey="revenue"
                   stroke="#10b981"
                   strokeWidth={2}
                   dot={{ fill: "#10b981", r: 4 }}
@@ -160,19 +275,9 @@ const Analytics = () => {
           <Card className="bg-card p-6">
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-lg font-bold">Приемы по дням</h3>
-              <Select defaultValue="days">
-                <SelectTrigger className="w-[120px] bg-secondary border-0">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="days">По дням</SelectItem>
-                  <SelectItem value="weeks">По неделям</SelectItem>
-                  <SelectItem value="months">По месяцам</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={appointmentsData}>
+              <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis
                   dataKey="date"
@@ -188,7 +293,7 @@ const Analytics = () => {
                   }}
                 />
                 <Bar
-                  dataKey="value"
+                  dataKey="appointments"
                   fill="#10b981"
                   radius={[8, 8, 0, 0]}
                   name="Приемов"
@@ -219,17 +324,38 @@ const Analytics = () => {
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
                     Средний чек
                   </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
+                    Не оплачено
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {doctorStats.map((stat, idx) => (
-                  <tr key={idx} className="border-b border-border last:border-0">
-                    <td className="py-3 px-4 text-sm">{stat.name}</td>
-                    <td className="py-3 px-4 text-sm">{stat.appointments}</td>
-                    <td className="py-3 px-4 text-sm">{stat.revenue}</td>
-                    <td className="py-3 px-4 text-sm">{stat.avgCheck}</td>
+                {doctorStats.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                      Нет данных
+                    </td>
                   </tr>
-                ))}
+                ) : (
+                  doctorStats.map((stat, idx) => (
+                    <tr
+                      key={idx}
+                      className="border-b border-border last:border-0 hover:bg-secondary/50"
+                    >
+                      <td className="py-3 px-4 text-sm font-medium">{stat.name}</td>
+                      <td className="py-3 px-4 text-sm">{stat.visits}</td>
+                      <td className="py-3 px-4 text-sm">
+                        {stat.revenue.toFixed(2)} смн
+                      </td>
+                      <td className="py-3 px-4 text-sm">
+                        {stat.avgCheck.toFixed(2)} смн
+                      </td>
+                      <td className="py-3 px-4 text-sm text-orange-500">
+                        {stat.unpaid.toFixed(2)} смн
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
