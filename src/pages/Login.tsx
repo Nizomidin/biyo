@@ -31,6 +31,10 @@ const Login = () => {
     }
 
     store.setCurrentUser(user);
+    // Migrate existing data to this clinic if needed
+    store.migrateDataToClinic(user.clinicId);
+    // Initialize default services for this clinic if needed
+    store.initializeDefaultServices();
     toast.success("Вход выполнен");
     navigate("/");
     setIsLoading(false);

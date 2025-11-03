@@ -16,6 +16,7 @@ export interface Patient {
   teeth: ToothStatus[];
   services: string[]; // Service IDs
   balance: number; // Outstanding balance
+  clinicId: string; // Clinic this patient belongs to
   createdAt: string;
   updatedAt: string;
 }
@@ -24,6 +25,7 @@ export interface Service {
   id: string;
   name: string;
   defaultPrice: number;
+  clinicId: string; // Clinic this service belongs to
 }
 
 export interface Doctor {
@@ -33,6 +35,8 @@ export interface Doctor {
   email?: string;
   phone?: string;
   color: string;
+  clinicId: string; // Clinic this doctor belongs to
+  userId?: string; // Optional: link to user account if doctor is also a user
 }
 
 export interface Payment {
@@ -60,6 +64,7 @@ export interface Visit {
   status: "scheduled" | "completed" | "cancelled";
   payments: Payment[];
   treatedTeeth?: number[]; // Teeth numbers that were treated/cured during this visit
+  clinicId: string; // Clinic this visit belongs to
   createdAt: string;
 }
 
@@ -68,6 +73,7 @@ export interface PatientFile {
   patientId: string;
   name: string;
   file: File | string; // File object or URL
+  clinicId: string; // Clinic this file belongs to
   uploadedAt: string;
 }
 
@@ -117,112 +123,196 @@ const saveToStorage = <T>(key: string, data: T[]): void => {
 
 // Store class
 class Store {
+  // Helper to get current user's clinic ID
+  getCurrentClinicId(): string | null {
+    const currentUser = this.getCurrentUser();
+    return currentUser?.clinicId || null;
+  }
+
   // Patients
   getPatients(clinicId?: string): Patient[] {
     const patients = getFromStorage<Patient>(STORAGE_KEYS.PATIENTS, []);
-    if (clinicId) {
-      // Filter patients by clinic if clinicId is provided
-      // For now, all patients belong to the current clinic
-      return patients;
+    const filterClinicId = clinicId || this.getCurrentClinicId();
+    if (filterClinicId) {
+      return patients.filter((p) => p.clinicId === filterClinicId);
     }
     return patients;
   }
 
   savePatient(patient: Patient): void {
-    const patients = this.getPatients();
-    const index = patients.findIndex((p) => p.id === patient.id);
+    // Ensure clinicId is set from current user if not provided
+    if (!patient.clinicId) {
+      const clinicId = this.getCurrentClinicId();
+      if (clinicId) {
+        patient.clinicId = clinicId;
+      } else {
+        throw new Error("No clinic ID available. Please log in.");
+      }
+    }
+
+    const patients = this.getPatients(); // Get all patients (will filter by clinic)
+    const allPatients = getFromStorage<Patient>(STORAGE_KEYS.PATIENTS, []);
+    const index = allPatients.findIndex((p) => p.id === patient.id);
     if (index >= 0) {
-      patients[index] = { ...patient, updatedAt: new Date().toISOString() };
+      allPatients[index] = { ...patient, updatedAt: new Date().toISOString() };
     } else {
-      patients.push({
+      allPatients.push({
         ...patient,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
     }
-    saveToStorage(STORAGE_KEYS.PATIENTS, patients);
+    saveToStorage(STORAGE_KEYS.PATIENTS, allPatients);
   }
 
   deletePatient(patientId: string): void {
-    const patients = this.getPatients().filter((p) => p.id !== patientId);
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) return;
+
+    const allPatients = getFromStorage<Patient>(STORAGE_KEYS.PATIENTS, []);
+    const patients = allPatients.filter((p) => !(p.id === patientId && p.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.PATIENTS, patients);
     // Also delete associated visits and files
-    const visits = this.getVisits().filter((v) => v.patientId !== patientId);
+    const allVisits = getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
+    const visits = allVisits.filter((v) => !(v.patientId === patientId && v.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.VISITS, visits);
-    const files = this.getFiles().filter((f) => f.patientId !== patientId);
+    const allFiles = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
+    const files = allFiles.filter((f) => !(f.patientId === patientId && f.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.FILES, files);
   }
 
   // Doctors
-  getDoctors(): Doctor[] {
-    return getFromStorage<Doctor>(STORAGE_KEYS.DOCTORS, []);
+  getDoctors(clinicId?: string): Doctor[] {
+    const doctors = getFromStorage<Doctor>(STORAGE_KEYS.DOCTORS, []);
+    const filterClinicId = clinicId || this.getCurrentClinicId();
+    if (filterClinicId) {
+      return doctors.filter((d) => d.clinicId === filterClinicId);
+    }
+    return doctors;
   }
 
   saveDoctor(doctor: Doctor): void {
-    const doctors = this.getDoctors();
-    const index = doctors.findIndex((d) => d.id === doctor.id);
-    if (index >= 0) {
-      doctors[index] = doctor;
-    } else {
-      doctors.push(doctor);
+    // Ensure clinicId is set from current user if not provided
+    if (!doctor.clinicId) {
+      const clinicId = this.getCurrentClinicId();
+      if (clinicId) {
+        doctor.clinicId = clinicId;
+      } else {
+        throw new Error("No clinic ID available. Please log in.");
+      }
     }
-    saveToStorage(STORAGE_KEYS.DOCTORS, doctors);
+
+    const allDoctors = getFromStorage<Doctor>(STORAGE_KEYS.DOCTORS, []);
+    const index = allDoctors.findIndex((d) => d.id === doctor.id);
+    if (index >= 0) {
+      allDoctors[index] = doctor;
+    } else {
+      allDoctors.push(doctor);
+    }
+    saveToStorage(STORAGE_KEYS.DOCTORS, allDoctors);
   }
 
   deleteDoctor(doctorId: string): void {
-    const doctors = this.getDoctors().filter((d) => d.id !== doctorId);
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) return;
+
+    const allDoctors = getFromStorage<Doctor>(STORAGE_KEYS.DOCTORS, []);
+    const doctors = allDoctors.filter((d) => !(d.id === doctorId && d.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.DOCTORS, doctors);
   }
 
   // Services
-  getServices(): Service[] {
-    return getFromStorage<Service>(STORAGE_KEYS.SERVICES, []);
+  getServices(clinicId?: string): Service[] {
+    const services = getFromStorage<Service>(STORAGE_KEYS.SERVICES, []);
+    const filterClinicId = clinicId || this.getCurrentClinicId();
+    if (filterClinicId) {
+      return services.filter((s) => s.clinicId === filterClinicId);
+    }
+    return services;
   }
 
   saveService(service: Service): void {
-    const services = this.getServices();
-    const index = services.findIndex((s) => s.id === service.id);
-    if (index >= 0) {
-      services[index] = service;
-    } else {
-      services.push(service);
+    // Ensure clinicId is set from current user if not provided
+    if (!service.clinicId) {
+      const clinicId = this.getCurrentClinicId();
+      if (clinicId) {
+        service.clinicId = clinicId;
+      } else {
+        throw new Error("No clinic ID available. Please log in.");
+      }
     }
-    saveToStorage(STORAGE_KEYS.SERVICES, services);
+
+    const allServices = getFromStorage<Service>(STORAGE_KEYS.SERVICES, []);
+    const index = allServices.findIndex((s) => s.id === service.id);
+    if (index >= 0) {
+      allServices[index] = service;
+    } else {
+      allServices.push(service);
+    }
+    saveToStorage(STORAGE_KEYS.SERVICES, allServices);
   }
 
   deleteService(serviceId: string): void {
-    const services = this.getServices().filter((s) => s.id !== serviceId);
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) return;
+
+    const allServices = getFromStorage<Service>(STORAGE_KEYS.SERVICES, []);
+    const services = allServices.filter((s) => !(s.id === serviceId && s.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.SERVICES, services);
   }
 
   // Visits
-  getVisits(): Visit[] {
-    return getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
+  getVisits(clinicId?: string): Visit[] {
+    const visits = getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
+    const filterClinicId = clinicId || this.getCurrentClinicId();
+    if (filterClinicId) {
+      return visits.filter((v) => v.clinicId === filterClinicId);
+    }
+    return visits;
   }
 
   saveVisit(visit: Visit): void {
-    const visits = this.getVisits();
-    const index = visits.findIndex((v) => v.id === visit.id);
+    // Ensure clinicId is set from current user if not provided
+    if (!visit.clinicId) {
+      const clinicId = this.getCurrentClinicId();
+      if (clinicId) {
+        visit.clinicId = clinicId;
+      } else {
+        throw new Error("No clinic ID available. Please log in.");
+      }
+    }
+
+    const allVisits = getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
+    const index = allVisits.findIndex((v) => v.id === visit.id);
     if (index >= 0) {
-      visits[index] = visit;
+      allVisits[index] = visit;
     } else {
-      visits.push({
+      allVisits.push({
         ...visit,
         createdAt: new Date().toISOString(),
       });
     }
-    saveToStorage(STORAGE_KEYS.VISITS, visits);
+    saveToStorage(STORAGE_KEYS.VISITS, allVisits);
   }
 
   deleteVisit(visitId: string): void {
-    const visits = this.getVisits().filter((v) => v.id !== visitId);
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) return;
+
+    const allVisits = getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
+    const visits = allVisits.filter((v) => !(v.id === visitId && v.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.VISITS, visits);
   }
 
   // Payments
   addPayment(visitId: string, amount: number): Payment {
-    const visits = this.getVisits();
-    const visit = visits.find((v) => v.id === visitId);
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) {
+      throw new Error("No clinic ID available. Please log in.");
+    }
+
+    const allVisits = getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
+    const visit = allVisits.find((v) => v.id === visitId && v.clinicId === clinicId);
     if (!visit) {
       throw new Error("Visit not found");
     }
@@ -235,7 +325,7 @@ class Store {
     };
 
     visit.payments = [...(visit.payments || []), payment];
-    saveToStorage(STORAGE_KEYS.VISITS, visits);
+    saveToStorage(STORAGE_KEYS.VISITS, allVisits);
 
     // Update patient balance
     const patient = this.getPatients().find((p) => p.id === visit.patientId);
@@ -248,25 +338,47 @@ class Store {
   }
 
   // Files
-  getFiles(): PatientFile[] {
-    return getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
+  getFiles(clinicId?: string): PatientFile[] {
+    const files = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
+    const filterClinicId = clinicId || this.getCurrentClinicId();
+    if (filterClinicId) {
+      return files.filter((f) => f.clinicId === filterClinicId);
+    }
+    return files;
   }
 
   saveFile(file: PatientFile): void {
-    const files = this.getFiles();
-    files.push(file);
-    saveToStorage(STORAGE_KEYS.FILES, files);
+    // Ensure clinicId is set from current user if not provided
+    if (!file.clinicId) {
+      const clinicId = this.getCurrentClinicId();
+      if (clinicId) {
+        file.clinicId = clinicId;
+      } else {
+        throw new Error("No clinic ID available. Please log in.");
+      }
+    }
+
+    const allFiles = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
+    allFiles.push(file);
+    saveToStorage(STORAGE_KEYS.FILES, allFiles);
   }
 
   deleteFile(fileId: string): void {
-    const files = this.getFiles().filter((f) => f.id !== fileId);
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) return;
+
+    const allFiles = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
+    const files = allFiles.filter((f) => !(f.id === fileId && f.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.FILES, files);
   }
 
   // Calculate patient balance from visits
   calculatePatientBalance(patientId: string): number {
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) return 0;
+
     const visits = this.getVisits().filter(
-      (v) => v.patientId === patientId && v.status !== "cancelled"
+      (v) => v.patientId === patientId && v.status !== "cancelled" && v.clinicId === clinicId
     );
     const totalCost = visits.reduce((sum, v) => sum + v.cost, 0);
     const totalPaid = visits.reduce(
@@ -285,11 +397,17 @@ class Store {
     });
   }
 
-  // Initialize default services
+  // Initialize default services for current clinic
   initializeDefaultServices(): void {
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) {
+      // No clinic ID yet, will initialize on first login
+      return;
+    }
+
     const existingServices = this.getServices();
     if (existingServices.length > 0) {
-      return; // Services already initialized
+      return; // Services already initialized for this clinic
     }
 
     const defaultServices: Service[] = [
@@ -338,7 +456,10 @@ class Store {
     ];
 
     defaultServices.forEach((service) => {
-      this.saveService(service);
+      this.saveService({
+        ...service,
+        clinicId, // Add clinicId to each service
+      });
     });
   }
 
@@ -405,12 +526,63 @@ class Store {
   logout(): void {
     this.setCurrentUser(null);
   }
+
+  // Migration: Assign clinicId to existing data without it
+  migrateDataToClinic(clinicId: string): void {
+    // Migrate patients
+    const allPatients = getFromStorage<Patient>(STORAGE_KEYS.PATIENTS, []);
+    const patientsToMigrate = allPatients.filter((p) => !p.clinicId);
+    patientsToMigrate.forEach((p) => {
+      p.clinicId = clinicId;
+    });
+    if (patientsToMigrate.length > 0) {
+      saveToStorage(STORAGE_KEYS.PATIENTS, allPatients);
+    }
+
+    // Migrate doctors
+    const allDoctors = getFromStorage<Doctor>(STORAGE_KEYS.DOCTORS, []);
+    const doctorsToMigrate = allDoctors.filter((d) => !d.clinicId);
+    doctorsToMigrate.forEach((d) => {
+      d.clinicId = clinicId;
+    });
+    if (doctorsToMigrate.length > 0) {
+      saveToStorage(STORAGE_KEYS.DOCTORS, allDoctors);
+    }
+
+    // Migrate services
+    const allServices = getFromStorage<Service>(STORAGE_KEYS.SERVICES, []);
+    const servicesToMigrate = allServices.filter((s) => !s.clinicId);
+    servicesToMigrate.forEach((s) => {
+      s.clinicId = clinicId;
+    });
+    if (servicesToMigrate.length > 0) {
+      saveToStorage(STORAGE_KEYS.SERVICES, allServices);
+    }
+
+    // Migrate visits
+    const allVisits = getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
+    const visitsToMigrate = allVisits.filter((v) => !v.clinicId);
+    visitsToMigrate.forEach((v) => {
+      v.clinicId = clinicId;
+    });
+    if (visitsToMigrate.length > 0) {
+      saveToStorage(STORAGE_KEYS.VISITS, allVisits);
+    }
+
+    // Migrate files
+    const allFiles = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
+    const filesToMigrate = allFiles.filter((f) => !f.clinicId);
+    filesToMigrate.forEach((f) => {
+      f.clinicId = clinicId;
+    });
+    if (filesToMigrate.length > 0) {
+      saveToStorage(STORAGE_KEYS.FILES, allFiles);
+    }
+  }
 }
 
 export const store = new Store();
 
-// Initialize default services on first load
-if (typeof window !== "undefined") {
-  store.initializeDefaultServices();
-}
+// Note: initializeDefaultServices will be called after user login
+// to ensure clinicId is available
 

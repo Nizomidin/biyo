@@ -103,6 +103,8 @@ const SignUp = () => {
 
     store.saveUser(user);
     store.setCurrentUser(user);
+    // Initialize default services for this clinic
+    store.initializeDefaultServices();
     
     toast.success("Регистрация успешна");
     navigate("/");
