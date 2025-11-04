@@ -1521,7 +1521,7 @@ function AppointmentDialog({
 
           <div className="space-y-2">
             <Label htmlFor="appointment-cost">
-              Стоимость <span className="text-destructive">*</span>
+              Стоимость
             </Label>
             <Input
               id="appointment-cost"
@@ -1529,7 +1529,6 @@ function AppointmentDialog({
               step="0.01"
               value={cost}
               onChange={(e) => setCost(e.target.value)}
-              required
             />
           </div>
 
