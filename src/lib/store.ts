@@ -1,12 +1,11 @@
 // Data store with localStorage persistence and API sync
 // Lazy import apiClient to avoid circular dependency
-let apiClient: any = null;
+let apiClientPromise: Promise<any> | null = null;
 const getApiClient = async () => {
-  if (!apiClient) {
-    const apiModule = await import('./api');
-    apiClient = apiModule.apiClient;
+  if (!apiClientPromise) {
+    apiClientPromise = import('./api').then(module => module.apiClient);
   }
-  return apiClient;
+  return apiClientPromise;
 };
 
 // Enable API sync (set to true to enable backend sync)
