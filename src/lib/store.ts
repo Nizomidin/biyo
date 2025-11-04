@@ -121,6 +121,9 @@ const STORAGE_KEYS = {
 // Helper functions
 const getFromStorage = <T>(key: string, defaultValue: T[]): T[] => {
   try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return defaultValue;
+    }
     const item = localStorage.getItem(key);
     return item ? JSON.parse(item) : defaultValue;
   } catch {
@@ -130,6 +133,9 @@ const getFromStorage = <T>(key: string, defaultValue: T[]): T[] => {
 
 const saveToStorage = <T>(key: string, data: T[]): void => {
   try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return;
+    }
     localStorage.setItem(key, JSON.stringify(data));
   } catch (error) {
     console.error(`Failed to save to localStorage: ${key}`, error);
