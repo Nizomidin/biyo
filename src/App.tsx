@@ -25,13 +25,18 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const checkAuth = () => {
-      const user = store.getCurrentUser();
-      const hasUser = !!user;
-      setIsAuthenticated(hasUser);
-      
-      // Update patient balances when user is authenticated
-      if (hasUser) {
-        store.updatePatientBalances().catch(err => console.error('Balance update failed:', err));
+      try {
+        const user = store.getCurrentUser();
+        const hasUser = !!user;
+        setIsAuthenticated(hasUser);
+        
+        // Update patient balances when user is authenticated
+        if (hasUser) {
+          store.updatePatientBalances().catch(err => console.error('Balance update failed:', err));
+        }
+      } catch (error) {
+        console.error('Error checking auth:', error);
+        setIsAuthenticated(false);
       }
     };
     
@@ -42,12 +47,29 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const interval = setInterval(checkAuth, 50);
     
     // Sync from API every 5 seconds if API sync is enabled
+    // Delay first sync to avoid initialization issues
     const syncInterval = setInterval(() => {
-      const user = store.getCurrentUser();
-      if (user) {
-        store.syncFromAPI().catch(err => console.error('Sync failed:', err));
+      try {
+        const user = store.getCurrentUser();
+        if (user) {
+          store.syncFromAPI().catch(err => console.error('Sync failed:', err));
+        }
+      } catch (error) {
+        console.error('Error in sync interval:', error);
       }
     }, 5000);
+    
+    // Initial sync after a delay to avoid initialization race conditions
+    setTimeout(() => {
+      try {
+        const user = store.getCurrentUser();
+        if (user) {
+          store.syncFromAPI().catch(err => console.error('Initial sync failed:', err));
+        }
+      } catch (error) {
+        console.error('Error in initial sync:', error);
+      }
+    }, 1000);
     
     return () => {
       clearInterval(interval);

@@ -532,8 +532,16 @@ class Store {
     if (!clinicId) return;
 
     try {
-      // Fetch all data from API
-      const client = await getApiClient();
+      // Fetch all data from API (with error handling for dynamic import)
+      const client = await getApiClient().catch(err => {
+        console.error('Failed to get API client:', err);
+        return null;
+      });
+      
+      if (!client) {
+        console.warn('API client not available, skipping sync');
+        return;
+      }
       const [patients, doctors, services, visits, files] = await Promise.all([
         client.getPatients(clinicId),
         client.getDoctors(clinicId),
@@ -675,9 +683,13 @@ class Store {
 
   getCurrentUser(): User | null {
     try {
+      if (typeof window === 'undefined' || !window.localStorage) {
+        return null;
+      }
       const userStr = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
       return userStr ? JSON.parse(userStr) : null;
-    } catch {
+    } catch (error) {
+      console.error('Error getting current user:', error);
       return null;
     }
   }
