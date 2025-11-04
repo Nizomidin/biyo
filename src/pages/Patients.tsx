@@ -728,6 +728,56 @@ export function PatientCard({
   const [selectedVisitForPayment, setSelectedVisitForPayment] = useState<
     string | null
   >(null);
+  const [visits, setVisits] = useState(() => 
+    store.getVisits()
+      .filter((v) => v.patientId === patient.id)
+      .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
+  );
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  // Refresh visits and patient data periodically to catch updates from other users
+  useEffect(() => {
+    const refreshData = () => {
+      // Refresh visits
+      const updatedVisits = store.getVisits()
+        .filter((v) => v.patientId === patient.id)
+        .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+      setVisits(updatedVisits);
+      
+      // Refresh patient data (to get updated balance)
+      const updatedPatient = store.getPatients().find(p => p.id === patient.id);
+      if (updatedPatient) {
+        // Recalculate balance to ensure it's up to date
+        updatedPatient.balance = store.calculatePatientBalance(patient.id);
+        setPatient(updatedPatient);
+      }
+      
+      setRefreshKey(prev => prev + 1);
+    };
+    
+    // Refresh every 2 seconds to catch changes from other users
+    const interval = setInterval(refreshData, 2000);
+    
+    // Also listen to storage events and custom events
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('biyo_')) {
+        refreshData();
+      }
+    };
+    
+    const handleDataUpdate = () => {
+      refreshData();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('biyo-data-updated', handleDataUpdate);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('biyo-data-updated', handleDataUpdate);
+    };
+  }, [patient.id]);
 
   // Update patient state when initialPatient changes (but preserve teeth changes if editing)
   useEffect(() => {
@@ -737,11 +787,6 @@ export function PatientCard({
       setTeeth(initialPatient.teeth || []);
     }
   }, [initialPatient, isEditing, isEditingTeeth]);
-
-  const visits = store
-    .getVisits()
-    .filter((v) => v.patientId === patient.id)
-    .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
   const handleSavePatient = async () => {
     const updatedPatient = { ...patient, teeth };
@@ -789,13 +834,20 @@ export function PatientCard({
     setSelectedVisitForPayment(null);
   };
 
-  const totalSpent = visits.reduce((sum, v) => sum + v.cost, 0);
-  const totalPaid = visits.reduce(
-    (sum, v) => sum + (v.payments?.reduce((p, pay) => p + pay.amount, 0) || 0),
-    0
-  );
-  const lastVisit = visits[0];
-  const nextVisit = visits.find((v) => v.status === "scheduled");
+  // Calculate summary data from current visits (will update when visits refresh)
+  // Use useMemo to recalculate when visits or refreshKey changes
+  const { totalSpent, totalPaid, lastVisit, nextVisit, currentBalance } = useMemo(() => {
+    const spent = visits.reduce((sum, v) => sum + v.cost, 0);
+    const paid = visits.reduce(
+      (sum, v) => sum + (v.payments?.reduce((p, pay) => p + pay.amount, 0) || 0),
+      0
+    );
+    const last = visits[0];
+    const next = visits.find((v) => v.status === "scheduled");
+    // Ensure patient balance is up to date
+    const balance = store.calculatePatientBalance(patient.id);
+    return { totalSpent: spent, totalPaid: paid, lastVisit: last, nextVisit: next, currentBalance: balance };
+  }, [visits, patient.id, refreshKey]);
 
   return (
     <Dialog open={!!patient} onOpenChange={(open) => !open && onClose()}>
@@ -1095,13 +1147,19 @@ export function PatientCard({
                           />
                           <Button
                             size="sm"
-                            onClick={() => {
-                              handleAddPayment(visit.id);
-                              // Refresh patient data to update balance
+                            onClick={async () => {
+                              await handleAddPayment(visit.id);
+                              // Refresh visits and patient data to update balance
+                              const updatedVisits = store.getVisits()
+                                .filter((v) => v.patientId === patient.id)
+                                .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+                              setVisits(updatedVisits);
                               const updatedPatient = store.getPatients().find(p => p.id === patient.id);
                               if (updatedPatient) {
+                                updatedPatient.balance = store.calculatePatientBalance(patient.id);
                                 setPatient(updatedPatient);
                               }
+                              setRefreshKey(prev => prev + 1);
                             }}
                             disabled={!paymentAmount || selectedVisitForPayment !== visit.id}
                           >
@@ -1157,8 +1215,8 @@ export function PatientCard({
               </div>
               <div>
                 <Label className="text-muted-foreground">Остаток к оплате</Label>
-                <p className={patient.balance > 0 ? "text-orange-500" : ""}>
-                  {patient.balance.toFixed(2)} смн
+                <p className={currentBalance > 0 ? "text-orange-500" : ""}>
+                  {currentBalance.toFixed(2)} смн
                 </p>
               </div>
             </div>
