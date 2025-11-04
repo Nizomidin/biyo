@@ -147,6 +147,11 @@ const Schedule = () => {
 
   const currentUser = store.getCurrentUser();
   const [doctorRefreshKey, setDoctorRefreshKey] = useState(0);
+  const [doctorsRefreshKey, setDoctorsRefreshKey] = useState(0);
+  const [visitsRefreshKey, setVisitsRefreshKey] = useState(0);
+  const [patients, setPatients] = useState(store.getPatients());
+  const [services, setServices] = useState(store.getServices());
+  const [visits, setVisits] = useState(store.getVisits());
   const allDoctors = store.getDoctors();
   
   // Ensure non-admin users have a doctor profile
@@ -203,11 +208,6 @@ const Schedule = () => {
     );
     return filtered;
   }, [currentUser, doctorRefreshKey, doctorsRefreshKey]); // Depend on refresh keys to trigger update
-  const [patients, setPatients] = useState(store.getPatients());
-  const [services, setServices] = useState(store.getServices());
-  const [visits, setVisits] = useState(store.getVisits());
-  const [doctorsRefreshKey, setDoctorsRefreshKey] = useState(0);
-  const [visitsRefreshKey, setVisitsRefreshKey] = useState(0);
   
   // Refresh all data periodically to sync with other users in the same clinic
   useEffect(() => {

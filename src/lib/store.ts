@@ -9,8 +9,8 @@ const getApiClient = async () => {
 };
 
 // Enable API sync (set to true to enable backend sync)
-// Default to true for full cross-device sync
-const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC !== 'false';
+// Default to false in development to avoid CORS issues, true in production
+const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC === 'true' || (import.meta.env.PROD && import.meta.env.VITE_ENABLE_API_SYNC !== 'false');
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://biyo-dash-insight.vercel.app/api';
 
 export interface ToothStatus {
