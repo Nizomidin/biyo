@@ -1,4 +1,11 @@
-// Data store with localStorage persistence
+// Data store with localStorage persistence and API sync
+import { apiClient } from './api';
+
+// Enable API sync (set to true to enable backend sync)
+// Default to true for full cross-device sync
+const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC !== 'false';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://biyo-dash-insight.vercel.app/api';
+
 export interface ToothStatus {
   toothNumber: number;
   status: "healthy" | "problem" | "treating" | "treated" | "missing";
@@ -140,7 +147,7 @@ class Store {
     return patients;
   }
 
-  savePatient(patient: Patient): void {
+  async savePatient(patient: Patient): Promise<void> {
     // Ensure clinicId is set from current user if not provided
     if (!patient.clinicId) {
       const clinicId = this.getCurrentClinicId();
@@ -164,6 +171,13 @@ class Store {
       });
     }
     saveToStorage(STORAGE_KEYS.PATIENTS, allPatients);
+    // Dispatch custom event to notify other components
+    window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'patients' } }));
+    
+    // Sync to API in background (don't wait for it)
+    if (ENABLE_API_SYNC) {
+      apiClient.savePatient(patient).catch(err => console.error('API sync failed:', err));
+    }
   }
 
   deletePatient(patientId: string): void {
@@ -192,7 +206,7 @@ class Store {
     return doctors;
   }
 
-  saveDoctor(doctor: Doctor): void {
+  async saveDoctor(doctor: Doctor): Promise<void> {
     // Ensure clinicId is set from current user if not provided
     if (!doctor.clinicId) {
       const clinicId = this.getCurrentClinicId();
@@ -211,6 +225,13 @@ class Store {
       allDoctors.push(doctor);
     }
     saveToStorage(STORAGE_KEYS.DOCTORS, allDoctors);
+    // Dispatch custom event to notify other components
+    window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'doctors' } }));
+    
+    // Sync to API in background
+    if (ENABLE_API_SYNC) {
+      apiClient.saveDoctor(doctor).catch(err => console.error('API sync failed:', err));
+    }
   }
 
   deleteDoctor(doctorId: string): void {
@@ -232,7 +253,7 @@ class Store {
     return services;
   }
 
-  saveService(service: Service): void {
+  async saveService(service: Service): Promise<void> {
     // Ensure clinicId is set from current user if not provided
     if (!service.clinicId) {
       const clinicId = this.getCurrentClinicId();
@@ -251,6 +272,13 @@ class Store {
       allServices.push(service);
     }
     saveToStorage(STORAGE_KEYS.SERVICES, allServices);
+    // Dispatch custom event to notify other components
+    window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'services' } }));
+    
+    // Sync to API in background
+    if (ENABLE_API_SYNC) {
+      apiClient.saveService(service).catch(err => console.error('API sync failed:', err));
+    }
   }
 
   deleteService(serviceId: string): void {
@@ -272,7 +300,7 @@ class Store {
     return visits;
   }
 
-  saveVisit(visit: Visit): void {
+  async saveVisit(visit: Visit): Promise<void> {
     // Ensure clinicId is set from current user if not provided
     if (!visit.clinicId) {
       const clinicId = this.getCurrentClinicId();
@@ -294,6 +322,13 @@ class Store {
       });
     }
     saveToStorage(STORAGE_KEYS.VISITS, allVisits);
+    // Dispatch custom event to notify other components
+    window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'visits' } }));
+    
+    // Sync to API in background
+    if (ENABLE_API_SYNC) {
+      apiClient.saveVisit(visit).catch(err => console.error('API sync failed:', err));
+    }
   }
 
   deleteVisit(visitId: string): void {
@@ -306,7 +341,7 @@ class Store {
   }
 
   // Payments
-  addPayment(visitId: string, amount: number): Payment {
+  async addPayment(visitId: string, amount: number): Promise<Payment> {
     const clinicId = this.getCurrentClinicId();
     if (!clinicId) {
       throw new Error("No clinic ID available. Please log in.");
@@ -327,6 +362,11 @@ class Store {
 
     visit.payments = [...(visit.payments || []), payment];
     saveToStorage(STORAGE_KEYS.VISITS, allVisits);
+    
+    // Sync to API in background
+    if (ENABLE_API_SYNC) {
+      apiClient.addPayment(visitId, amount).catch(err => console.error('API sync failed:', err));
+    }
 
     // Update patient balance
     const patient = this.getPatients().find((p) => p.id === visit.patientId);
@@ -348,7 +388,7 @@ class Store {
     return files;
   }
 
-  saveFile(file: PatientFile): void {
+  async saveFile(file: PatientFile): Promise<void> {
     // Ensure clinicId is set from current user if not provided
     if (!file.clinicId) {
       const clinicId = this.getCurrentClinicId();
@@ -362,6 +402,13 @@ class Store {
     const allFiles = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
     allFiles.push(file);
     saveToStorage(STORAGE_KEYS.FILES, allFiles);
+    // Dispatch custom event to notify other components
+    window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'files' } }));
+    
+    // Sync to API in background
+    if (ENABLE_API_SYNC) {
+      apiClient.saveFile(file).catch(err => console.error('API sync failed:', err));
+    }
   }
 
   deleteFile(fileId: string): void {
@@ -390,21 +437,21 @@ class Store {
   }
 
   // Update all patient balances
-  updatePatientBalances(): void {
+  async updatePatientBalances(): Promise<void> {
     const clinicId = this.getCurrentClinicId();
     if (!clinicId) {
       // No user logged in, skip balance update
       return;
     }
     const patients = this.getPatients();
-    patients.forEach((patient) => {
+    await Promise.all(patients.map(async (patient) => {
       patient.balance = this.calculatePatientBalance(patient.id);
-      this.savePatient(patient);
-    });
+      await this.savePatient(patient);
+    }));
   }
 
   // Initialize default services for current clinic
-  initializeDefaultServices(): void {
+  async initializeDefaultServices(): Promise<void> {
     const clinicId = this.getCurrentClinicId();
     if (!clinicId) {
       // No clinic ID yet, will initialize on first login
@@ -461,12 +508,108 @@ class Store {
       { id: "disposable_4", name: "Рентген", defaultPrice: 0 },
     ];
 
-    defaultServices.forEach((service) => {
-      this.saveService({
+    // Save services sequentially to avoid race conditions
+    for (const service of defaultServices) {
+      await this.saveService({
         ...service,
         clinicId, // Add clinicId to each service
       });
-    });
+    }
+  }
+  
+  // Sync data from API (called periodically to get updates from other users)
+  async syncFromAPI(): Promise<void> {
+    if (!ENABLE_API_SYNC) return;
+    
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) return;
+
+    try {
+      // Fetch all data from API
+      const [patients, doctors, services, visits, files] = await Promise.all([
+        apiClient.getPatients(clinicId),
+        apiClient.getDoctors(clinicId),
+        apiClient.getServices(clinicId),
+        apiClient.getVisits(clinicId),
+        apiClient.getFiles(undefined, clinicId),
+      ]);
+
+      // Merge with localStorage (API data takes precedence)
+      if (patients.length > 0) {
+        const localPatients = getFromStorage<Patient>(STORAGE_KEYS.PATIENTS, []);
+        const mergedPatients = [...localPatients];
+        patients.forEach(apiPatient => {
+          const index = mergedPatients.findIndex(p => p.id === apiPatient.id && p.clinicId === clinicId);
+          if (index >= 0) {
+            mergedPatients[index] = apiPatient;
+          } else if (apiPatient.clinicId === clinicId) {
+            mergedPatients.push(apiPatient);
+          }
+        });
+        saveToStorage(STORAGE_KEYS.PATIENTS, mergedPatients);
+      }
+
+      if (doctors.length > 0) {
+        const localDoctors = getFromStorage<Doctor>(STORAGE_KEYS.DOCTORS, []);
+        const mergedDoctors = [...localDoctors];
+        doctors.forEach(apiDoctor => {
+          const index = mergedDoctors.findIndex(d => d.id === apiDoctor.id && d.clinicId === clinicId);
+          if (index >= 0) {
+            mergedDoctors[index] = apiDoctor;
+          } else if (apiDoctor.clinicId === clinicId) {
+            mergedDoctors.push(apiDoctor);
+          }
+        });
+        saveToStorage(STORAGE_KEYS.DOCTORS, mergedDoctors);
+      }
+
+      if (services.length > 0) {
+        const localServices = getFromStorage<Service>(STORAGE_KEYS.SERVICES, []);
+        const mergedServices = [...localServices];
+        services.forEach(apiService => {
+          const index = mergedServices.findIndex(s => s.id === apiService.id && s.clinicId === clinicId);
+          if (index >= 0) {
+            mergedServices[index] = apiService;
+          } else if (apiService.clinicId === clinicId) {
+            mergedServices.push(apiService);
+          }
+        });
+        saveToStorage(STORAGE_KEYS.SERVICES, mergedServices);
+      }
+
+      if (visits.length > 0) {
+        const localVisits = getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
+        const mergedVisits = [...localVisits];
+        visits.forEach(apiVisit => {
+          const index = mergedVisits.findIndex(v => v.id === apiVisit.id && v.clinicId === clinicId);
+          if (index >= 0) {
+            mergedVisits[index] = apiVisit;
+          } else if (apiVisit.clinicId === clinicId) {
+            mergedVisits.push(apiVisit);
+          }
+        });
+        saveToStorage(STORAGE_KEYS.VISITS, mergedVisits);
+      }
+
+      if (files.length > 0) {
+        const localFiles = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
+        const mergedFiles = [...localFiles];
+        files.forEach(apiFile => {
+          const index = mergedFiles.findIndex(f => f.id === apiFile.id && f.clinicId === clinicId);
+          if (index >= 0) {
+            mergedFiles[index] = apiFile;
+          } else if (apiFile.clinicId === clinicId) {
+            mergedFiles.push(apiFile);
+          }
+        });
+        saveToStorage(STORAGE_KEYS.FILES, mergedFiles);
+      }
+
+      // Trigger refresh event
+      window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'sync' } }));
+    } catch (error) {
+      console.error('API sync failed:', error);
+    }
   }
 
   // Authentication
@@ -474,7 +617,7 @@ class Store {
     return getFromStorage<User>(STORAGE_KEYS.USERS, []);
   }
 
-  saveUser(user: User): void {
+  async saveUser(user: User): Promise<void> {
     const users = this.getUsers();
     const index = users.findIndex((u) => u.id === user.id);
     if (index >= 0) {
@@ -483,6 +626,11 @@ class Store {
       users.push(user);
     }
     saveToStorage(STORAGE_KEYS.USERS, users);
+    
+    // Sync to API in background
+    if (ENABLE_API_SYNC) {
+      apiClient.saveUser(user).catch(err => console.error('API sync failed:', err));
+    }
   }
 
   getUserByEmail(email: string): User | undefined {
@@ -497,7 +645,7 @@ class Store {
     return getFromStorage<Clinic>(STORAGE_KEYS.CLINICS, []);
   }
 
-  saveClinic(clinic: Clinic): void {
+  async saveClinic(clinic: Clinic): Promise<void> {
     const clinics = this.getClinics();
     const index = clinics.findIndex((c) => c.id === clinic.id);
     if (index >= 0) {
@@ -506,6 +654,11 @@ class Store {
       clinics.push(clinic);
     }
     saveToStorage(STORAGE_KEYS.CLINICS, clinics);
+    
+    // Sync to API in background
+    if (ENABLE_API_SYNC) {
+      apiClient.saveClinic(clinic).catch(err => console.error('API sync failed:', err));
+    }
   }
 
   getClinicById(clinicId: string): Clinic | undefined {

@@ -31,7 +31,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       
       // Update patient balances when user is authenticated
       if (hasUser) {
-        store.updatePatientBalances();
+        store.updatePatientBalances().catch(err => console.error('Balance update failed:', err));
       }
     };
     
@@ -41,7 +41,18 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     // Check auth state more frequently to catch logout events quickly
     const interval = setInterval(checkAuth, 50);
     
-    return () => clearInterval(interval);
+    // Sync from API every 5 seconds if API sync is enabled
+    const syncInterval = setInterval(() => {
+      const user = store.getCurrentUser();
+      if (user) {
+        store.syncFromAPI().catch(err => console.error('Sync failed:', err));
+      }
+    }, 5000);
+    
+    return () => {
+      clearInterval(interval);
+      clearInterval(syncInterval);
+    };
   }, []);
 
   // Show loading state briefly while checking

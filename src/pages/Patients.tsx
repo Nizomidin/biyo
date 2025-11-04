@@ -64,10 +64,42 @@ const Patients = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
 
-  const patients = store.getPatients();
-  const services = store.getServices();
-
-  const visits = store.getVisits();
+  const [patients, setPatients] = useState(store.getPatients());
+  const [services, setServices] = useState(store.getServices());
+  const [visits, setVisits] = useState(store.getVisits());
+  
+  // Refresh all data periodically to sync with other users in the same clinic
+  useEffect(() => {
+    const refreshData = () => {
+      setPatients(store.getPatients());
+      setServices(store.getServices());
+      setVisits(store.getVisits());
+    };
+    
+    // Refresh every 2 seconds to catch changes from other users
+    const interval = setInterval(refreshData, 2000);
+    
+    // Also listen to storage events (for cross-tab sync)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('biyo_')) {
+        refreshData();
+      }
+    };
+    
+    // Listen to custom events for same-tab updates
+    const handleDataUpdate = () => {
+      refreshData();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('biyo-data-updated', handleDataUpdate);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('biyo-data-updated', handleDataUpdate);
+    };
+  }, []);
 
   // Filter patients
   const filteredPatients = useMemo(() => {
@@ -314,7 +346,26 @@ function AddPatientDialog({
     }
   }, [open]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleCreateService = async () => {
+    if (!newServiceName.trim()) {
+      toast.error("Введите название услуги");
+      return;
+    }
+    const newService = {
+      id: `service_${Date.now()}_${Math.random()}`,
+      name: newServiceName.trim(),
+      defaultPrice: 0,
+    };
+    await store.saveService(newService);
+    toast.success("Услуга создана");
+    // Refresh services list
+    setServices(store.getServices());
+    // Close dialog
+    setIsCreatingServiceDialogOpen(false);
+    setNewServiceName("");
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !phone || !email || !dateOfBirth) {
       toast.error("Заполните все обязательные поля");
@@ -337,7 +388,7 @@ function AddPatientDialog({
       updatedAt: new Date().toISOString(),
     };
 
-    store.savePatient(patient);
+    await store.savePatient(patient);
     toast.success("Пациент добавлен");
 
     // Reset form
@@ -692,9 +743,9 @@ export function PatientCard({
     .filter((v) => v.patientId === patient.id)
     .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
-  const handleSavePatient = () => {
+  const handleSavePatient = async () => {
     const updatedPatient = { ...patient, teeth };
-    store.savePatient(updatedPatient);
+    await store.savePatient(updatedPatient);
     setPatient(updatedPatient);
     setIsEditing(false);
     setIsEditingTeeth(false);
@@ -708,29 +759,29 @@ export function PatientCard({
     setIsEditingTeeth(false);
   };
 
-  const handleSaveTeeth = () => {
+  const handleSaveTeeth = async () => {
     const updatedPatient = { ...patient, teeth };
-    store.savePatient(updatedPatient);
+    await store.savePatient(updatedPatient);
     setPatient(updatedPatient);
     setIsEditingTeeth(false);
     toast.success("Зубная карта обновлена");
   };
 
-  const handleAddPayment = (visitId: string) => {
+  const handleAddPayment = async (visitId: string) => {
     const amount = parseFloat(paymentAmount);
     if (!amount || amount <= 0) {
       toast.error("Введите корректную сумму");
       return;
     }
 
-    store.addPayment(visitId, amount);
+    await store.addPayment(visitId, amount);
     toast.success("Платеж добавлен");
     
     // Update patient balance
     const updatedPatient = store.getPatients().find(p => p.id === patient.id);
     if (updatedPatient) {
       updatedPatient.balance = store.calculatePatientBalance(patient.id);
-      store.savePatient(updatedPatient);
+      await store.savePatient(updatedPatient);
       setPatient(updatedPatient);
     }
     

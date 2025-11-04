@@ -19,11 +19,12 @@ export function Navbar() {
   
   const clinic = currentUser ? store.getClinicById(currentUser.clinicId) : null;
 
+  // All users should see all tabs - no role restrictions
   const navItems = [
     { path: "/", label: "Расписание", icon: Calendar },
     { path: "/patients", label: "Пациенты", icon: Users },
     { path: "/analytics", label: "Аналитика", icon: TrendingUp },
-  ];
+  ].filter(Boolean); // Ensure no undefined items
 
   const isActive = (path: string) => location.pathname === path;
 

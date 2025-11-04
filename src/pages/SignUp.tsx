@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { store, User, Clinic } from "@/lib/store";
+import { store, User, Clinic, Doctor } from "@/lib/store";
 import { toast } from "sonner";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, ArrowLeft } from "lucide-react";
@@ -24,7 +24,21 @@ const SignUp = () => {
   const [proficiency, setProficiency] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [clinicExists, setClinicExists] = useState<boolean | null>(null);
   const navigate = useNavigate();
+
+  // Check if clinic exists as user types
+  useEffect(() => {
+    if (clinicName.trim().length > 0) {
+      const existingClinics = store.getClinics();
+      const exists = existingClinics.some((c) => 
+        c.name.toLowerCase().trim() === clinicName.toLowerCase().trim()
+      );
+      setClinicExists(exists);
+    } else {
+      setClinicExists(null);
+    }
+  }, [clinicName]);
 
   const handleStep1 = (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,8 +126,27 @@ const SignUp = () => {
 
     store.saveUser(user);
     store.setCurrentUser(user);
+    
+    // If user is not admin, create a doctor profile for them
+    if (!isAdmin) {
+      const doctorColors = ["blue", "emerald", "red", "yellow", "purple"];
+      const randomColor = doctorColors[Math.floor(Math.random() * doctorColors.length)];
+      
+      const doctor: Doctor = {
+        id: `doctor_${Date.now()}_${Math.random()}`,
+        name: email.split("@")[0], // Use email prefix as default name
+        specialization: proficiency || undefined,
+        email: email,
+        userId: user.id, // Link doctor to user account
+        color: randomColor,
+        clinicId: clinic.id,
+      };
+      
+      await store.saveDoctor(doctor);
+    }
+    
     // Initialize default services for this clinic
-    store.initializeDefaultServices();
+    await store.initializeDefaultServices();
     
     toast.success("Регистрация успешна");
     navigate("/");
@@ -153,6 +186,25 @@ const SignUp = () => {
                   placeholder="Название вашей клиники"
                   required
                 />
+                {clinicExists !== null && clinicName.trim().length > 0 && (
+                  <p className={`text-xs flex items-center gap-1 ${
+                    clinicExists 
+                      ? "text-green-600" 
+                      : "text-blue-600"
+                  }`}>
+                    {clinicExists ? (
+                      <>
+                        <span>✓</span>
+                        <span>Эта клиника уже существует. Вы присоединитесь к ней.</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>+</span>
+                        <span>Эта клиника не существует. Будет создана новая клиника.</span>
+                      </>
+                    )}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

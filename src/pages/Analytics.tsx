@@ -28,10 +28,45 @@ type PeriodType = "today" | "week" | "month" | "year" | "custom";
 const Analytics = () => {
   const [period, setPeriod] = useState<PeriodType>("month");
   const [selectedDoctorId, setSelectedDoctorId] = useState<string>("all");
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const doctors = store.getDoctors();
-  const patients = store.getPatients();
-  const visits = store.getVisits();
+  const [doctors, setDoctors] = useState(store.getDoctors());
+  const [patients, setPatients] = useState(store.getPatients());
+  const [visits, setVisits] = useState(store.getVisits());
+  
+  // Refresh all data periodically to sync with other users in the same clinic
+  useEffect(() => {
+    const refreshData = () => {
+      setDoctors(store.getDoctors());
+      setPatients(store.getPatients());
+      setVisits(store.getVisits());
+      setRefreshKey(prev => prev + 1);
+    };
+    
+    // Refresh every 2 seconds to catch changes from other users
+    const interval = setInterval(refreshData, 2000);
+    
+    // Also listen to storage events (for cross-tab sync)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('biyo_')) {
+        refreshData();
+      }
+    };
+    
+    // Listen to custom events for same-tab updates
+    const handleDataUpdate = () => {
+      refreshData();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('biyo-data-updated', handleDataUpdate);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('biyo-data-updated', handleDataUpdate);
+    };
+  }, []);
 
   // Get date range based on period
   const getDateRange = (): [Date, Date] => {
@@ -63,7 +98,7 @@ const Analytics = () => {
       const doctorMatch = selectedDoctorId === "all" || visit.doctorId === selectedDoctorId;
       return inRange && doctorMatch && visit.status !== "cancelled";
     });
-  }, [visits, dateFrom, dateTo, selectedDoctorId]);
+  }, [visits, dateFrom, dateTo, selectedDoctorId, refreshKey]);
 
   // Calculate summary metrics
   const metrics = useMemo(() => {

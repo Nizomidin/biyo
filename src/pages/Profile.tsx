@@ -104,20 +104,29 @@ const Profile = () => {
   const allVisits = isSuperAdmin ? store.getAllVisits() : [];
   const allUsers = isSuperAdmin ? store.getAllUsers() : [];
 
-  // Debug: Log what we're getting
+  // Debug: Log what we're getting (only in development)
   useEffect(() => {
     if (isSuperAdmin) {
-      console.log("Super Admin Debug:", {
-        currentUserEmail: currentUser?.email,
-        isSuperAdmin,
-        allUsersCount: allUsers.length,
-        allUsers: allUsers,
-        allClinicsCount: allClinics.length,
-        allClinics: allClinics,
-        localStorageUsers: localStorage.getItem("biyo_users"),
-      });
+      console.log("=== Super Admin Debug Info ===");
+      console.log("All Users:", allUsers);
+      console.log("All Users Count:", allUsers.length);
+      console.log("All Clinics:", allClinics);
+      console.log("All Patients:", allPatients.length);
+      console.log("All Doctors:", allDoctors.length);
+      console.log("All Visits:", allVisits.length);
+      console.log("Current User:", currentUser);
+      
+      // Also check localStorage directly
+      try {
+        const rawUsers = localStorage.getItem("biyo_users");
+        const parsedUsers = rawUsers ? JSON.parse(rawUsers) : [];
+        console.log("Direct localStorage check - biyo_users:", parsedUsers);
+        console.log("Direct localStorage count:", parsedUsers.length);
+      } catch (e) {
+        console.error("Error reading localStorage:", e);
+      }
     }
-  }, [isSuperAdmin, allUsers, allClinics, currentUser]);
+  }, [isSuperAdmin, allUsers, allClinics, allPatients, allDoctors, allVisits, currentUser]);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -419,109 +428,6 @@ const Profile = () => {
             </TabsContent>
 
             <TabsContent value="data" className="space-y-6">
-              {/* Data Export/Import Section for Super Admin */}
-              <Card className="p-6">
-                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <Database className="h-5 w-5" />
-                  Управление данными
-                </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Экспорт всех данных</Label>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Скачайте все данные в JSON файл для резервного копирования или миграции
-                    </p>
-                    <Button
-                      onClick={() => {
-                        const data = {
-                          users: store.getAllUsers(),
-                          clinics: store.getClinics(),
-                          patients: store.getAllPatients(),
-                          doctors: store.getAllDoctors(),
-                          visits: store.getAllVisits(),
-                          services: store.getAllServices(),
-                          files: (() => {
-                            try {
-                              const item = localStorage.getItem("biyo_files");
-                              return item ? JSON.parse(item) : [];
-                            } catch {
-                              return [];
-                            }
-                          })(),
-                          exportDate: new Date().toISOString(),
-                        };
-                        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `biyo-data-export-${new Date().toISOString().split("T")[0]}.json`;
-                        document.body.appendChild(a);
-                        a.click();
-                        document.body.removeChild(a);
-                        URL.revokeObjectURL(url);
-                        toast.success("Данные экспортированы");
-                      }}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      Экспортировать данные
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Импорт данных</Label>
-                    <p className="text-sm text-muted-foreground mb-2">
-                      Загрузите JSON файл с данными для восстановления или миграции
-                    </p>
-                    <Input
-                      type="file"
-                      accept=".json"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        
-                        const reader = new FileReader();
-                        reader.onload = (event) => {
-                          try {
-                            const data = JSON.parse(event.target?.result as string);
-                            
-                            // Import all data
-                            if (data.users) {
-                              data.users.forEach((user: any) => store.saveUser(user));
-                            }
-                            if (data.clinics) {
-                              data.clinics.forEach((clinic: any) => store.saveClinic(clinic));
-                            }
-                            if (data.patients) {
-                              data.patients.forEach((patient: any) => store.savePatient(patient));
-                            }
-                            if (data.doctors) {
-                              data.doctors.forEach((doctor: any) => store.saveDoctor(doctor));
-                            }
-                            if (data.visits) {
-                              data.visits.forEach((visit: any) => store.saveVisit(visit));
-                            }
-                            if (data.services) {
-                              data.services.forEach((service: any) => store.saveService(service));
-                            }
-                            if (data.files) {
-                              localStorage.setItem("biyo_files", JSON.stringify(data.files));
-                            }
-                            
-                            toast.success("Данные импортированы успешно");
-                            // Reload page to refresh data
-                            window.location.reload();
-                          } catch (error) {
-                            toast.error("Ошибка при импорте данных");
-                            console.error(error);
-                          }
-                        };
-                        reader.readAsText(file);
-                      }}
-                    />
-                  </div>
-                </div>
-              </Card>
-
               {stats && (
                 <>
                   {/* Summary Cards */}
@@ -682,36 +588,97 @@ const Profile = () => {
                       <Users className="h-5 w-5" />
                       Все пользователи ({allUsers.length})
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {allUsers.map((user) => {
-                        const clinic = allClinics.find(c => c.id === user.clinicId);
-                        const userPatients = allPatients.filter(p => p.clinicId === user.clinicId);
-                        const userVisits = allVisits.filter(v => v.clinicId === user.clinicId && v.status !== "cancelled");
-                        return (
-                          <Card key={user.id} className="p-4">
-                            <div className="space-y-2">
-                              <div className="flex items-center justify-between">
-                                <h4 className="font-semibold">{user.email}</h4>
-                                {user.role === "admin" && (
-                                  <span className="text-xs bg-blue-500/20 text-blue-600 px-2 py-1 rounded">Admin</span>
+                    {allUsers.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <p className="text-muted-foreground mb-2">
+                          Пользователи не найдены в localStorage этого браузера.
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          ⚠️ Важно: localStorage хранится отдельно для каждого браузера и устройства.
+                          Если другие пользователи создавали аккаунты на других браузерах/устройствах, 
+                          они не будут видны здесь.
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Все аккаунты должны быть созданы в <strong>этом же браузере</strong>, 
+                          чтобы суперадминистратор мог их видеть.
+                        </p>
+                      </div>
+                    ) : allUsers.length === 1 ? (
+                      <div className="p-6">
+                        <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-md">
+                          <p className="text-sm font-medium mb-2">⚠️ Найден только 1 пользователь (это вы)</p>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            Это означает, что другие аккаунты были созданы в <strong>другом браузере или на другом устройстве</strong>.
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            <strong>Как это работает:</strong> localStorage хранится отдельно для каждого браузера. 
+                            Если вы создали аккаунты на Chrome, Firefox, Safari, или разных устройствах - 
+                            они не будут видны друг другу.
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {allUsers.map((user) => {
+                            const clinic = allClinics.find(c => c.id === user.clinicId);
+                            const userPatients = allPatients.filter(p => p.clinicId === user.clinicId);
+                            const userVisits = allVisits.filter(v => v.clinicId === user.clinicId && v.status !== "cancelled");
+                            return (
+                              <Card key={user.id} className="p-4">
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <h4 className="font-semibold">{user.email}</h4>
+                                    {user.role === "admin" && (
+                                      <span className="text-xs bg-blue-500/20 text-blue-600 px-2 py-1 rounded">Admin</span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-muted-foreground">{clinic?.name || "Неизвестная клиника"}</p>
+                                  {user.proficiency && (
+                                    <p className="text-sm">{user.proficiency}</p>
+                                  )}
+                                  <div className="flex gap-4 text-sm mt-2">
+                                    <span>Пациентов: {userPatients.length}</span>
+                                    <span>Записей: {userVisits.length}</span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Создан: {format(parseISO(user.createdAt), "dd.MM.yyyy", { locale: ru })}
+                                  </p>
+                                </div>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {allUsers.map((user) => {
+                          const clinic = allClinics.find(c => c.id === user.clinicId);
+                          const userPatients = allPatients.filter(p => p.clinicId === user.clinicId);
+                          const userVisits = allVisits.filter(v => v.clinicId === user.clinicId && v.status !== "cancelled");
+                          return (
+                            <Card key={user.id} className="p-4">
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="font-semibold">{user.email}</h4>
+                                  {user.role === "admin" && (
+                                    <span className="text-xs bg-blue-500/20 text-blue-600 px-2 py-1 rounded">Admin</span>
+                                  )}
+                                </div>
+                                <p className="text-sm text-muted-foreground">{clinic?.name || "Неизвестная клиника"}</p>
+                                {user.proficiency && (
+                                  <p className="text-sm">{user.proficiency}</p>
                                 )}
+                                <div className="flex gap-4 text-sm mt-2">
+                                  <span>Пациентов: {userPatients.length}</span>
+                                  <span>Записей: {userVisits.length}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Создан: {format(parseISO(user.createdAt), "dd.MM.yyyy", { locale: ru })}
+                                </p>
                               </div>
-                              <p className="text-sm text-muted-foreground">{clinic?.name || "Неизвестная клиника"}</p>
-                              {user.proficiency && (
-                                <p className="text-sm">{user.proficiency}</p>
-                              )}
-                              <div className="flex gap-4 text-sm mt-2">
-                                <span>Пациентов: {userPatients.length}</span>
-                                <span>Записей: {userVisits.length}</span>
-                              </div>
-                              <p className="text-xs text-muted-foreground">
-                                Создан: {format(parseISO(user.createdAt), "dd.MM.yyyy", { locale: ru })}
-                              </p>
-                            </div>
-                          </Card>
-                        );
-                      })}
-                    </div>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    )}
                   </Card>
 
                   {/* All Doctors */}

@@ -145,30 +145,118 @@ const Schedule = () => {
   const [draggedAppointment, setDraggedAppointment] = useState<AppointmentDisplay | null>(null);
   const [dragOverSlot, setDragOverSlot] = useState<{ doctorId: string; time: string } | null>(null);
 
-  const doctors = store.getDoctors();
-  const [patients, setPatients] = useState(store.getPatients());
-  const services = store.getServices();
+  const currentUser = store.getCurrentUser();
+  const [doctorRefreshKey, setDoctorRefreshKey] = useState(0);
+  const allDoctors = store.getDoctors();
   
-  // Refresh patients list periodically to catch new additions
+  // Ensure non-admin users have a doctor profile
   useEffect(() => {
-    const interval = setInterval(() => {
+    if (!currentUser || currentUser.role === "admin") return;
+    
+    const ensureDoctorProfile = async () => {
+      const doctors = store.getDoctors();
+      const userDoctor = doctors.find((d) => d.userId === currentUser.id);
+      // If no doctor found by userId, try by email
+      if (!userDoctor) {
+        const doctorByEmail = doctors.find((d) => d.email === currentUser.email && d.clinicId === currentUser.clinicId);
+        if (doctorByEmail) {
+          // Link existing doctor to user
+          doctorByEmail.userId = currentUser.id;
+          await store.saveDoctor(doctorByEmail);
+          setDoctorRefreshKey(prev => prev + 1); // Trigger re-render
+        } else {
+          // Create new doctor for user
+          const doctorColors = ["blue", "emerald", "red", "yellow", "purple"];
+          const randomColor = doctorColors[Math.floor(Math.random() * doctorColors.length)];
+          
+          const newDoctor: Doctor = {
+            id: `doctor_${Date.now()}_${Math.random()}`,
+            name: currentUser.email.split("@")[0],
+            specialization: currentUser.proficiency || undefined,
+            email: currentUser.email,
+            userId: currentUser.id,
+            color: randomColor,
+            clinicId: currentUser.clinicId,
+          };
+          
+          await store.saveDoctor(newDoctor);
+          setDoctorRefreshKey(prev => prev + 1); // Trigger re-render
+        }
+      }
+    };
+    
+    ensureDoctorProfile();
+  }, [currentUser?.id]); // Only depend on user ID to avoid unnecessary re-runs
+  
+  // Filter doctors: if user is not admin, only show their personal doctor
+  const doctors = useMemo(() => {
+    const allDocs = store.getDoctors(); // Get fresh doctors list
+    if (!currentUser) return [];
+    if (currentUser.role === "admin") {
+      return allDocs;
+    }
+    // For non-admin users, only show doctor linked to their user account
+    // Also try matching by email as fallback
+    const filtered = allDocs.filter((doctor) => 
+      doctor.userId === currentUser.id || 
+      (doctor.email === currentUser.email && doctor.clinicId === currentUser.clinicId)
+    );
+    return filtered;
+  }, [currentUser, doctorRefreshKey, doctorsRefreshKey]); // Depend on refresh keys to trigger update
+  const [patients, setPatients] = useState(store.getPatients());
+  const [services, setServices] = useState(store.getServices());
+  const [doctorsRefreshKey, setDoctorsRefreshKey] = useState(0);
+  
+  // Refresh all data periodically to sync with other users in the same clinic
+  useEffect(() => {
+    const refreshData = () => {
       setPatients(store.getPatients());
-    }, 500);
-    return () => clearInterval(interval);
+      setServices(store.getServices());
+      setDoctorsRefreshKey(prev => prev + 1);
+    };
+    
+    // Refresh every 2 seconds to catch changes from other users
+    const interval = setInterval(refreshData, 2000);
+    
+    // Also listen to storage events (for cross-tab sync)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key && e.key.startsWith('biyo_')) {
+        refreshData();
+      }
+    };
+    
+    // Listen to custom events for same-tab updates
+    const handleDataUpdate = () => {
+      refreshData();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('biyo-data-updated', handleDataUpdate);
+    
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('biyo-data-updated', handleDataUpdate);
+    };
   }, []);
 
   const selectedDateStr = format(selectedDate, "d MMMM yyyy", { locale: ru });
 
   // Get appointments for selected date
+  // For non-admin users, only show appointments for their doctor
   const appointments = useMemo(() => {
-    const visits = store.getVisits();
+    const visits = store.getVisits(); // Always get fresh visits
     const dayStart = startOfDay(selectedDate);
     const dayEnd = addDays(dayStart, 1);
+    
+    // Get list of visible doctor IDs
+    const visibleDoctorIds = doctors.map(d => d.id);
 
     return visits
       .filter((v) => {
         const visitDate = parseISO(v.startTime);
-        return isSameDay(visitDate, selectedDate);
+        // Filter by date and only show appointments for visible doctors
+        return isSameDay(visitDate, selectedDate) && visibleDoctorIds.includes(v.doctorId);
       })
       .map((visit) => {
         const patient = patients.find((p) => p.id === visit.patientId);
@@ -187,7 +275,7 @@ const Schedule = () => {
           visit,
         } as AppointmentDisplay;
       });
-  }, [selectedDate, doctors, patients]);
+  }, [selectedDate, doctors, patients, doctorsRefreshKey]); // Add refresh key to trigger updates
 
   const navigateDate = (direction: "prev" | "next" | "today") => {
     if (direction === "today") {
@@ -333,21 +421,23 @@ const Schedule = () => {
                 doctor={editingDoctor}
                 onDelete={(doctorId) => setDeletingDoctorId(doctorId)}
               />
-              <Tooltip delayDuration={100}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="rounded-full"
-                    onClick={() => setIsAddDoctorOpen(true)}
-                  >
+              {currentUser?.role === "admin" && (
+                <Tooltip delayDuration={100}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-full"
+                      onClick={() => setIsAddDoctorOpen(true)}
+                    >
               <Plus className="h-5 w-5" />
             </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Добавить врача</p>
-                </TooltipContent>
-              </Tooltip>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Добавить врача</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
           </div>
 
@@ -395,10 +485,16 @@ const Schedule = () => {
 
           {doctors.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
-              <p className="mb-4">Нет врачей. Добавьте первого врача.</p>
-              <Button onClick={() => setIsAddDoctorOpen(true)}>
-                Добавить врача
-              </Button>
+              <p className="mb-4">
+                {currentUser?.role === "admin" 
+                  ? "Нет врачей. Добавьте первого врача."
+                  : "Врач не найден. Обратитесь к администратору для создания вашего профиля врача."}
+              </p>
+              {currentUser?.role === "admin" && (
+                <Button onClick={() => setIsAddDoctorOpen(true)}>
+                  Добавить врача
+                </Button>
+              )}
             </div>
           ) : (
             <div className="relative overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
@@ -436,36 +532,38 @@ const Schedule = () => {
                       <div className="text-sm font-medium text-center">
                         {doctor.name}
                       </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => {
-                              setEditingDoctor(doctor);
-                              setIsAddDoctorOpen(true);
-                            }}
-                          >
-                            Редактировать
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => {
-                              setDeletingDoctorId(doctor.id);
-                            }}
-                          >
-                            Удалить
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      {currentUser?.role === "admin" && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setEditingDoctor(doctor);
+                                setIsAddDoctorOpen(true);
+                              }}
+                            >
+                              Редактировать
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => {
+                                setDeletingDoctorId(doctor.id);
+                              }}
+                            >
+                              Удалить
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
                   </div>
                     {doctor.specialization && (
                       <div className="text-xs text-muted-foreground text-center">
@@ -699,7 +797,7 @@ function AddDoctorDialog({
     { value: "purple", label: "Фиолетовый", class: "bg-purple-500" },
   ];
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name) {
       toast.error("Введите имя врача");
@@ -715,7 +813,7 @@ function AddDoctorDialog({
       color,
     };
 
-    store.saveDoctor(doctorData);
+    await store.saveDoctor(doctorData);
     toast.success(doctor ? "Врач обновлен" : "Врач добавлен");
 
     // Reset form
@@ -1091,14 +1189,14 @@ function AppointmentDialog({
       createdAt: appointment?.createdAt || new Date().toISOString(),
     };
 
-    store.saveVisit(visit);
+    await store.saveVisit(visit);
 
     // Update patient balance
     const refreshedPatients = store.getPatients();
     const patient = refreshedPatients.find((p) => p.id === patientId);
     if (patient) {
       patient.balance = store.calculatePatientBalance(patientId);
-      store.savePatient(patient);
+      await store.savePatient(patient);
       // Refresh patients list again after balance update
       setPatients(store.getPatients());
     }
@@ -1117,7 +1215,7 @@ function AppointmentDialog({
     // }
   };
 
-  const handleCreatePatient = () => {
+  const handleCreatePatient = async () => {
     if (!newPatientName) {
       toast.error("Введите имя пациента");
       return;
@@ -1135,7 +1233,7 @@ function AppointmentDialog({
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    store.savePatient(newPatient);
+    await store.savePatient(newPatient);
     toast.success("Пациент создан");
     
     // Refresh patients list to include the new patient
@@ -1152,7 +1250,7 @@ function AppointmentDialog({
     setNewPatientPhone("");
   };
 
-  const handleCreateService = () => {
+  const handleCreateService = async () => {
     if (!newServiceName.trim()) {
       toast.error("Введите название услуги");
       return;
@@ -1162,7 +1260,7 @@ function AppointmentDialog({
       name: newServiceName.trim(),
       defaultPrice: 0,
     };
-    store.saveService(newService);
+    await store.saveService(newService);
     toast.success("Услуга создана");
     // Refresh services list
     setServices(store.getServices());
@@ -1310,7 +1408,12 @@ function AppointmentDialog({
             <Label htmlFor="appointment-doctor">
               Врач <span className="text-destructive">*</span>
             </Label>
-            <Select value={doctorId} onValueChange={setDoctorId} required>
+            <Select 
+              value={doctorId} 
+              onValueChange={setDoctorId} 
+              required
+              disabled={doctors.length === 1}
+            >
               <SelectTrigger id="appointment-doctor">
                 <SelectValue />
               </SelectTrigger>
@@ -1322,6 +1425,11 @@ function AppointmentDialog({
                 ))}
               </SelectContent>
             </Select>
+            {doctors.length === 1 && (
+              <p className="text-xs text-muted-foreground">
+                Только ваш профиль врача доступен
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -1681,7 +1789,7 @@ function ServicesDialog({
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
 
-  const handleAddService = (e: React.FormEvent) => {
+  const handleAddService = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newServiceName || !newServicePrice) {
       toast.error("Заполните все поля");
@@ -1694,7 +1802,7 @@ function ServicesDialog({
       defaultPrice: parseFloat(newServicePrice) || 0,
     };
 
-    store.saveService(service);
+    await store.saveService(service);
     setServices(store.getServices());
     setNewServiceName("");
     setNewServicePrice("");
@@ -1710,10 +1818,10 @@ function ServicesDialog({
     }
   };
 
-  const handleSaveEdit = (serviceId: string) => {
+  const handleSaveEdit = async (serviceId: string) => {
     const service = services.find((s) => s.id === serviceId);
     if (service && editName && editPrice) {
-      store.saveService({
+      await store.saveService({
         ...service,
         name: editName,
         defaultPrice: parseFloat(editPrice) || 0,

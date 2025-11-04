@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { store } from "@/lib/store";
+import { store, Doctor } from "@/lib/store";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
@@ -34,8 +34,44 @@ const Login = () => {
     store.setCurrentUser(user);
     // Migrate existing data to this clinic if needed
     store.migrateDataToClinic(user.clinicId);
+    
+    // If user is not admin, ensure they have a doctor profile linked
+    if (user.role !== "admin") {
+      const allDoctors = store.getDoctors();
+      // Check if doctor exists with userId link
+      let userDoctor = allDoctors.find((d) => d.userId === user.id);
+      
+      // If not found, try to find by email
+      if (!userDoctor) {
+        userDoctor = allDoctors.find((d) => d.email === user.email && d.clinicId === user.clinicId);
+        // If found by email, link it to the user
+        if (userDoctor) {
+          userDoctor.userId = user.id;
+          await store.saveDoctor(userDoctor);
+        }
+      }
+      
+      // If still not found, create a new doctor profile
+      if (!userDoctor) {
+        const doctorColors = ["blue", "emerald", "red", "yellow", "purple"];
+        const randomColor = doctorColors[Math.floor(Math.random() * doctorColors.length)];
+        
+        const doctor: Doctor = {
+          id: `doctor_${Date.now()}_${Math.random()}`,
+          name: user.email.split("@")[0], // Use email prefix as default name
+          specialization: user.proficiency || undefined,
+          email: user.email,
+          userId: user.id, // Link doctor to user account
+          color: randomColor,
+          clinicId: user.clinicId,
+        };
+        
+        await store.saveDoctor(doctor);
+      }
+    }
+    
     // Initialize default services for this clinic if needed
-    store.initializeDefaultServices();
+    await store.initializeDefaultServices();
     toast.success("Вход выполнен");
     navigate("/");
     setIsLoading(false);
