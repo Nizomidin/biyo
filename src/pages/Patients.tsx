@@ -21,6 +21,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -266,7 +284,7 @@ const Patients = () => {
 function AddPatientDialog({
   open,
   onOpenChange,
-  services,
+  services: initialServices,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -283,6 +301,18 @@ function AddPatientDialog({
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [price, setPrice] = useState("");
   const [visitNotes, setVisitNotes] = useState("");
+  const [serviceSearchOpen, setServiceSearchOpen] = useState(false);
+  const [isCreatingServiceDialogOpen, setIsCreatingServiceDialogOpen] = useState(false);
+  const [newServiceName, setNewServiceName] = useState("");
+  const [serviceSearchQuery, setServiceSearchQuery] = useState("");
+  const [services, setServices] = useState(initialServices);
+
+  // Refresh services when dialog opens or when a new service is created
+  useEffect(() => {
+    if (open) {
+      setServices(store.getServices());
+    }
+  }, [open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -322,6 +352,10 @@ function AddPatientDialog({
     setSelectedServices([]);
     setPrice("");
     setVisitNotes("");
+    setServiceSearchOpen(false);
+    setIsCreatingService(false);
+    setNewServiceName("");
+    setServiceSearchQuery("");
     onOpenChange(false);
   };
 
@@ -426,25 +460,93 @@ function AddPatientDialog({
 
           <div className="space-y-2">
             <Label>Услуги</Label>
-            <Select
-              value=""
-              onValueChange={(value) => {
-                if (value && !selectedServices.includes(value)) {
-                  setSelectedServices([...selectedServices, value]);
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите услугу" />
-              </SelectTrigger>
-              <SelectContent>
-                {services.map((service) => (
-                  <SelectItem key={service.id} value={service.id}>
-                    {service.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Input
+                  type="text"
+                  placeholder="Поиск услуги..."
+                  value={serviceSearchQuery}
+                  onChange={(e) => {
+                    setServiceSearchQuery(e.target.value);
+                    setServiceSearchOpen(true);
+                  }}
+                  onFocus={() => {
+                    setServiceSearchOpen(true);
+                  }}
+                  className="w-full"
+                />
+                {serviceSearchOpen && (
+                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-[300px] overflow-auto">
+                    <Command>
+                      <CommandList>
+                        {(() => {
+                          const filtered = serviceSearchQuery 
+                            ? services.filter((service) =>
+                                service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase())
+                              )
+                            : services;
+                          return filtered.length === 0 ? (
+                            <CommandEmpty>
+                              <div className="py-4 text-center">
+                                <p className="text-sm text-muted-foreground">
+                                  Услуга не найдена
+                                </p>
+                              </div>
+                            </CommandEmpty>
+                          ) : (
+                            <CommandGroup>
+                              {filtered.map((service) => {
+                                const isSelected = selectedServices.includes(service.id);
+                                return (
+                                  <CommandItem
+                                    key={service.id}
+                                    value={service.name}
+                                    onSelect={() => {
+                                      if (!isSelected) {
+                                        setSelectedServices([...selectedServices, service.id]);
+                                      }
+                                      setServiceSearchQuery("");
+                                      setServiceSearchOpen(false);
+                                    }}
+                                  >
+                                    <div className="flex flex-col w-full">
+                                      <span className="font-medium">{service.name}</span>
+                                      {service.defaultPrice > 0 && (
+                                        <span className="text-xs text-muted-foreground">
+                                          {service.defaultPrice} смн
+                                        </span>
+                                      )}
+                                    </div>
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          );
+                        })()}
+                      </CommandList>
+                    </Command>
+                  </div>
+                )}
+              </div>
+              <Tooltip delayDuration={100}>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => {
+                      setNewServiceName(serviceSearchQuery || "");
+                      setIsCreatingServiceDialogOpen(true);
+                    }}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Добавить услугу</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
             {selectedServices.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {selectedServices.map((serviceId) => {
@@ -454,7 +556,7 @@ function AddPatientDialog({
                       key={serviceId}
                       className="flex items-center gap-2 px-3 py-1 bg-secondary rounded-full text-sm"
                     >
-                      <span>{service?.name}</span>
+                      <span>{service?.name || serviceId}</span>
                       <button
                         type="button"
                         onClick={() =>
@@ -507,6 +609,50 @@ function AddPatientDialog({
           </div>
         </form>
       </DialogContent>
+
+      {/* Create Service Dialog */}
+      <Dialog open={isCreatingServiceDialogOpen} onOpenChange={setIsCreatingServiceDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Создать новую услугу</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Название услуги</Label>
+              <Input
+                value={newServiceName}
+                onChange={(e) => setNewServiceName(e.target.value)}
+                placeholder="Название услуги"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleCreateService();
+                  }
+                }}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setIsCreatingServiceDialogOpen(false);
+                  setNewServiceName("");
+                }}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="button"
+                onClick={handleCreateService}
+              >
+                Создать
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
@@ -532,11 +678,14 @@ export function PatientCard({
     string | null
   >(null);
 
-  // Update patient state when initialPatient changes
+  // Update patient state when initialPatient changes (but preserve teeth changes if editing)
   useEffect(() => {
     setPatient(initialPatient);
-    setTeeth(initialPatient.teeth);
-  }, [initialPatient]);
+    // Only update teeth if not currently editing, otherwise preserve user's changes
+    if (!isEditing && !isEditingTeeth) {
+      setTeeth(initialPatient.teeth || []);
+    }
+  }, [initialPatient, isEditing, isEditingTeeth]);
 
   const visits = store
     .getVisits()

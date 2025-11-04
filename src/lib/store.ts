@@ -80,6 +80,7 @@ export interface PatientFile {
 export interface User {
   id: string;
   email: string;
+  password?: string; // Optional password field
   clinicId: string;
   proficiency?: string;
   role: "admin" | "user";
@@ -390,6 +391,11 @@ class Store {
 
   // Update all patient balances
   updatePatientBalances(): void {
+    const clinicId = this.getCurrentClinicId();
+    if (!clinicId) {
+      // No user logged in, skip balance update
+      return;
+    }
     const patients = this.getPatients();
     patients.forEach((patient) => {
       patient.balance = this.calculatePatientBalance(patient.id);
@@ -525,6 +531,27 @@ class Store {
 
   logout(): void {
     this.setCurrentUser(null);
+  }
+
+  // Super admin methods - get all data without clinic filtering
+  getAllPatients(): Patient[] {
+    return getFromStorage<Patient>(STORAGE_KEYS.PATIENTS, []);
+  }
+
+  getAllDoctors(): Doctor[] {
+    return getFromStorage<Doctor>(STORAGE_KEYS.DOCTORS, []);
+  }
+
+  getAllVisits(): Visit[] {
+    return getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
+  }
+
+  getAllServices(): Service[] {
+    return getFromStorage<Service>(STORAGE_KEYS.SERVICES, []);
+  }
+
+  getAllUsers(): User[] {
+    return getFromStorage<User>(STORAGE_KEYS.USERS, []);
   }
 
   // Migration: Assign clinicId to existing data without it

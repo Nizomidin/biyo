@@ -51,6 +51,11 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -328,15 +333,21 @@ const Schedule = () => {
                 doctor={editingDoctor}
                 onDelete={(doctorId) => setDeletingDoctorId(doctorId)}
               />
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full"
-                onClick={() => setIsAddDoctorOpen(true)}
-                title="Добавить врача"
-              >
+              <Tooltip delayDuration={100}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="rounded-full"
+                    onClick={() => setIsAddDoctorOpen(true)}
+                  >
               <Plus className="h-5 w-5" />
             </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Добавить врача</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
 
@@ -818,7 +829,7 @@ function AppointmentDialog({
   appointment,
   patients: initialPatients,
   doctors,
-  services,
+  services: initialServices,
   selectedDate,
   onPatientSelect,
   checkConflict,
@@ -840,22 +851,24 @@ function AppointmentDialog({
   ) => boolean;
 }) {
   const [patients, setPatients] = useState(initialPatients);
+  const [services, setServices] = useState(initialServices);
   
-  // Refresh patients list when dialog opens
+  // Refresh patients and services list when dialog opens
   useEffect(() => {
     if (open) {
       setPatients(store.getPatients());
+      setServices(store.getServices());
     }
-  }, [open]);
+  }, [open, initialServices]);
   const [patientId, setPatientId] = useState(appointment?.patientId || "");
   const [patientSearchOpen, setPatientSearchOpen] = useState(false);
   const [isCreatingPatientDialogOpen, setIsCreatingPatientDialogOpen] = useState(false);
   const [newPatientName, setNewPatientName] = useState("");
   const [newPatientPhone, setNewPatientPhone] = useState("");
   const [serviceSearchOpen, setServiceSearchOpen] = useState(false);
-  const [isCreatingService, setIsCreatingService] = useState(false);
+  const [isCreatingServiceDialogOpen, setIsCreatingServiceDialogOpen] = useState(false);
   const [newServiceName, setNewServiceName] = useState("");
-  const [newServicePrice, setNewServicePrice] = useState("");
+  const [serviceSearchQuery, setServiceSearchQuery] = useState("");
   const [doctorId, setDoctorId] = useState(
     appointment?.doctorId || selectedSlot.doctorId
   );
@@ -887,30 +900,77 @@ function AppointmentDialog({
   );
   const [notes, setNotes] = useState(appointment?.notes || "");
   const [isLoading, setIsLoading] = useState(false);
+  const [duration, setDuration] = useState<number | null>(null); // Store duration in minutes
 
-  // Load patient data when patientId changes
+  // Calculate and store duration when start/end times are initially set
+  useEffect(() => {
+    if (startTime && endTime) {
+      const start = new Date(`2000-01-01T${startTime}`);
+      const end = new Date(`2000-01-01T${endTime}`);
+      // Handle case where end time is next day
+      if (end < start) {
+        end.setDate(end.getDate() + 1);
+      }
+      const diffMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+      if (duration === null) {
+        setDuration(diffMinutes);
+      }
+    }
+  }, []); // Only run once on mount
+
+  // Auto-adjust end time when start time changes
+  useEffect(() => {
+    if (startTime && duration !== null) {
+      const start = new Date(`2000-01-01T${startTime}`);
+      const newEnd = new Date(start.getTime() + duration * 60 * 1000);
+      const newEndTime = format(newEnd, "HH:mm");
+      setEndTime(newEndTime);
+    }
+  }, [startTime, duration]);
+
+  // Load patient data when patientId changes (only when patientId changes, not when patients array updates)
   useEffect(() => {
     if (patientId) {
       const patient = patients.find((p) => p.id === patientId);
       setSelectedPatient(patient || null);
       if (patient) {
-        setTeeth(patient.teeth || []);
+        // Only initialize teeth if teeth state is empty, otherwise keep user's changes
+        setTeeth((prevTeeth) => prevTeeth.length === 0 ? (patient.teeth || []) : prevTeeth);
       }
     } else {
       setSelectedPatient(null);
       setTeeth([]);
     }
-  }, [patientId, patients]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
 
   // Load appointment data when editing
   useEffect(() => {
     if (appointment && open) {
       setIsLoading(true);
       setTimeout(() => {
+        const patient = patients.find((p) => p.id === appointment.patientId);
+        const appointmentStart = format(parseISO(appointment.startTime), "HH:mm");
+        const appointmentEnd = format(parseISO(appointment.endTime), "HH:mm");
+        
         setPatientId(appointment.patientId);
         setDoctorId(appointment.doctorId);
-        setStartTime(format(parseISO(appointment.startTime), "HH:mm"));
-        setEndTime(format(parseISO(appointment.endTime), "HH:mm"));
+        setStartTime(appointmentStart);
+        setEndTime(appointmentEnd);
+        
+        // Calculate and store duration
+        const start = new Date(`2000-01-01T${appointmentStart}`);
+        const end = new Date(`2000-01-01T${appointmentEnd}`);
+        if (end < start) {
+          end.setDate(end.getDate() + 1);
+        }
+        const diffMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+        setDuration(diffMinutes);
+        
+        // Load patient's teeth state
+        if (patient) {
+          setTeeth(patient.teeth || []);
+        }
         // Handle both legacy and new service formats
         if (Array.isArray(appointment.services) && appointment.services.length > 0) {
           if (typeof appointment.services[0] === 'string') {
@@ -925,16 +985,19 @@ function AppointmentDialog({
       }, 100);
     } else if (!appointment && open) {
       // Reset for new appointment
+      const slotTime = selectedSlot.time;
       setPatientId("");
       setDoctorId(selectedSlot.doctorId);
-      setStartTime(selectedSlot.time);
-      setEndTime(addMinutes(selectedSlot.time, 30));
+      setStartTime(slotTime);
+      setEndTime(addMinutes(slotTime, 30));
+      setDuration(30); // Default 30 minutes
       setSelectedServices([]);
       setTeeth([]);
       setCost("");
       setNotes("");
       setIsLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appointment, open, selectedSlot]);
 
   // Auto-fill cost when services are selected (only if cost is empty and not editing)
@@ -1090,25 +1153,26 @@ function AppointmentDialog({
   };
 
   const handleCreateService = () => {
-    if (!newServiceName) {
+    if (!newServiceName.trim()) {
       toast.error("Введите название услуги");
       return;
     }
     const newService = {
       id: `service_${Date.now()}_${Math.random()}`,
-      name: newServiceName,
-      defaultPrice: parseFloat(newServicePrice) || 0,
+      name: newServiceName.trim(),
+      defaultPrice: 0,
     };
     store.saveService(newService);
     toast.success("Услуга создана");
-    setServiceSearchOpen(false);
-    setIsCreatingService(false);
-    setNewServiceName("");
-    setNewServicePrice("");
     // Refresh services list
-    const updatedServices = store.getServices();
-    // Add the new service to selected services
+    setServices(store.getServices());
+    // Add the new service to selected services immediately
     setSelectedServices([...selectedServices, { serviceId: newService.id, quantity: 1 }]);
+    // Reset form and close
+    setIsCreatingServiceDialogOpen(false);
+    setNewServiceName("");
+    setServiceSearchQuery("");
+    setServiceSearchOpen(false);
   };
 
   // Organize services by category
@@ -1281,7 +1345,19 @@ function AppointmentDialog({
                 id="appointment-end"
                 type="time"
                 value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
+                onChange={(e) => {
+                  setEndTime(e.target.value);
+                  // Update duration when end time is manually changed
+                  if (startTime && e.target.value) {
+                    const start = new Date(`2000-01-01T${startTime}`);
+                    const end = new Date(`2000-01-01T${e.target.value}`);
+                    if (end < start) {
+                      end.setDate(end.getDate() + 1);
+                    }
+                    const diffMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
+                    setDuration(diffMinutes);
+                  }
+                }}
                 required
               />
             </div>
@@ -1301,119 +1377,95 @@ function AppointmentDialog({
 
           {/* Services */}
           <div className="space-y-4 border-t pt-4">
-            <div className="flex items-center gap-2">
+            <div className="space-y-2">
               <Label>Услуги</Label>
-              <Popover open={serviceSearchOpen} onOpenChange={setServiceSearchOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    type="button"
-                    className="gap-2"
-                  >
-                    <Search className="h-4 w-4" />
-                    Поиск или создание услуги
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[400px] p-0" align="end">
-                  <Command>
-                    <CommandInput placeholder="Поиск услуги..." />
-                    <CommandList>
-                      <CommandEmpty>
-                        Услуга не найдена
-                      </CommandEmpty>
-                      {!isCreatingService ? (
-                        <>
-                          <CommandGroup>
-                            {services.map((service) => {
-                              const isSelected = selectedServices.some((s) => s.serviceId === service.id);
-                              return (
-                                <CommandItem
-                                  key={service.id}
-                                  value={service.name}
-                                  onSelect={() => {
-                                    if (!isSelected) {
-                                      setSelectedServices([...selectedServices, { serviceId: service.id, quantity: 1 }]);
-                                    }
-                                    setServiceSearchOpen(false);
-                                  }}
-                                >
-                                  <div className="flex flex-col w-full">
-                                    <span className="font-medium">{service.name}</span>
-                                    {service.defaultPrice > 0 && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {service.defaultPrice} смн
-                                      </span>
-                                    )}
-                                  </div>
-                                </CommandItem>
-                              );
-                            })}
-                          </CommandGroup>
-                          <div className="border-t p-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setIsCreatingService(true)}
-                              className="w-full"
-                            >
-                              <PlusIcon className="h-4 w-4 mr-2" />
-                              Создать новую услугу
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <CommandGroup>
-                          <div className="p-4 space-y-3">
-                            <div className="space-y-2">
-                              <Label>Название услуги</Label>
-                              <Input
-                                value={newServiceName}
-                                onChange={(e) => setNewServiceName(e.target.value)}
-                                placeholder="Название услуги"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Цена по умолчанию (смн)</Label>
-                              <Input
-                                type="number"
-                                step="0.01"
-                                value={newServicePrice}
-                                onChange={(e) => setNewServicePrice(e.target.value)}
-                                placeholder="0.00"
-                              />
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                size="sm"
-                                onClick={handleCreateService}
-                                className="flex-1"
-                              >
-                                Создать
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  setIsCreatingService(false);
-                                  setNewServiceName("");
-                                  setNewServicePrice("");
-                                }}
-                                className="flex-1"
-                              >
-                                Отмена
-                              </Button>
-                            </div>
-                          </div>
-                        </CommandGroup>
-                      )}
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Input
+                    type="text"
+                    placeholder="Поиск услуги..."
+                    value={serviceSearchQuery}
+                    onChange={(e) => {
+                      setServiceSearchQuery(e.target.value);
+                      setServiceSearchOpen(true);
+                    }}
+                    onFocus={() => {
+                      setServiceSearchOpen(true);
+                    }}
+                    className="w-full"
+                  />
+                  {serviceSearchOpen && (
+                    <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-[300px] overflow-auto">
+                      <Command>
+                        <CommandList>
+                          {(() => {
+                            const filtered = serviceSearchQuery 
+                              ? services.filter((service) =>
+                                  service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase())
+                                )
+                              : services;
+                            return filtered.length === 0 ? (
+                              <CommandEmpty>
+                                <div className="py-4 text-center">
+                                  <p className="text-sm text-muted-foreground">
+                                    Услуга не найдена
+                                  </p>
+                                </div>
+                              </CommandEmpty>
+                            ) : (
+                              <CommandGroup>
+                                {filtered.map((service) => {
+                                  const isSelected = selectedServices.some((s) => s.serviceId === service.id);
+                                  return (
+                                    <CommandItem
+                                      key={service.id}
+                                      value={service.name}
+                                      onSelect={() => {
+                                        if (!isSelected) {
+                                          setSelectedServices([...selectedServices, { serviceId: service.id, quantity: 1 }]);
+                                        }
+                                        setServiceSearchQuery("");
+                                        setServiceSearchOpen(false);
+                                      }}
+                                    >
+                                      <div className="flex flex-col w-full">
+                                        <span className="font-medium">{service.name}</span>
+                                        {service.defaultPrice > 0 && (
+                                          <span className="text-xs text-muted-foreground">
+                                            {service.defaultPrice} смн
+                                          </span>
+                                        )}
+                                      </div>
+                                    </CommandItem>
+                                  );
+                                })}
+                              </CommandGroup>
+                            );
+                          })()}
+                        </CommandList>
+                      </Command>
+                    </div>
+                  )}
+                </div>
+                <Tooltip delayDuration={100}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => {
+                        setNewServiceName(serviceSearchQuery || "");
+                        setIsCreatingServiceDialogOpen(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Добавить услугу</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             </div>
 
             {/* Selected Services Summary */}
@@ -1560,6 +1612,50 @@ function AppointmentDialog({
                   type="button"
                   onClick={handleCreatePatient}
                   disabled={!newPatientName}
+                >
+                  Создать
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Create Service Dialog */}
+        <Dialog open={isCreatingServiceDialogOpen} onOpenChange={setIsCreatingServiceDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Создать новую услугу</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Название услуги</Label>
+                <Input
+                  value={newServiceName}
+                  onChange={(e) => setNewServiceName(e.target.value)}
+                  placeholder="Название услуги"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleCreateService();
+                    }
+                  }}
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsCreatingServiceDialogOpen(false);
+                    setNewServiceName("");
+                  }}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleCreateService}
                 >
                   Создать
                 </Button>
