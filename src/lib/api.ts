@@ -1,6 +1,18 @@
 // API client for backend sync
 // This will sync with a backend API while maintaining localStorage for immediate UI updates
 
+// Import types from store FIRST to avoid circular dependency
+import type {
+  Patient,
+  Doctor,
+  Service,
+  Visit,
+  PatientFile,
+  User,
+  Clinic,
+  Payment,
+} from './store';
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://biyo-dash-insight.vercel.app/api';
 
 interface ApiResponse<T> {
@@ -201,18 +213,6 @@ class ApiClient {
     return result.data || null;
   }
 }
-
-// Import types from store
-import type {
-  Patient,
-  Doctor,
-  Service,
-  Visit,
-  PatientFile,
-  User,
-  Clinic,
-  Payment,
-} from './store';
 
 export const apiClient = new ApiClient();
 
