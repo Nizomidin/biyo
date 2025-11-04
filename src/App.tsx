@@ -79,7 +79,14 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   // Show loading state briefly while checking
   if (isAuthenticated === null) {
-    return <div className="min-h-screen bg-background flex items-center justify-center">Загрузка...</div>;
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-lg">Загрузка...</p>
+          <p className="text-sm text-muted-foreground mt-2">Пожалуйста, подождите</p>
+        </div>
+      </div>
+    );
   }
 
   // Redirect to login if not authenticated
