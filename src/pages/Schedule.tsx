@@ -205,14 +205,18 @@ const Schedule = () => {
   }, [currentUser, doctorRefreshKey, doctorsRefreshKey]); // Depend on refresh keys to trigger update
   const [patients, setPatients] = useState(store.getPatients());
   const [services, setServices] = useState(store.getServices());
+  const [visits, setVisits] = useState(store.getVisits());
   const [doctorsRefreshKey, setDoctorsRefreshKey] = useState(0);
+  const [visitsRefreshKey, setVisitsRefreshKey] = useState(0);
   
   // Refresh all data periodically to sync with other users in the same clinic
   useEffect(() => {
     const refreshData = () => {
       setPatients(store.getPatients());
       setServices(store.getServices());
+      setVisits(store.getVisits());
       setDoctorsRefreshKey(prev => prev + 1);
+      setVisitsRefreshKey(prev => prev + 1); // Trigger appointments refresh
     };
     
     // Refresh every 2 seconds to catch changes from other users
@@ -245,14 +249,14 @@ const Schedule = () => {
   // Get appointments for selected date
   // For non-admin users, only show appointments for their doctor
   const appointments = useMemo(() => {
-    const visits = store.getVisits(); // Always get fresh visits
+    const currentVisits = visits; // Use state visits which are refreshed
     const dayStart = startOfDay(selectedDate);
     const dayEnd = addDays(dayStart, 1);
     
     // Get list of visible doctor IDs
     const visibleDoctorIds = doctors.map(d => d.id);
 
-    return visits
+    return currentVisits
       .filter((v) => {
         const visitDate = parseISO(v.startTime);
         // Filter by date and only show appointments for visible doctors
@@ -275,7 +279,7 @@ const Schedule = () => {
           visit,
         } as AppointmentDisplay;
       });
-  }, [selectedDate, doctors, patients, doctorsRefreshKey]); // Add refresh key to trigger updates
+  }, [selectedDate, doctors, patients, visits, doctorsRefreshKey, visitsRefreshKey]); // Add visits and refresh key to trigger updates
 
   const navigateDate = (direction: "prev" | "next" | "today") => {
     if (direction === "today") {
@@ -305,6 +309,9 @@ const Schedule = () => {
   const handleDeleteAppointment = () => {
     if (deleteAppointmentId) {
       store.deleteVisit(deleteAppointmentId);
+      // Refresh visits to show the deletion immediately
+      setVisits(store.getVisits());
+      setVisitsRefreshKey(prev => prev + 1);
       toast.success("Запись удалена");
       setDeleteAppointmentId(null);
     }
@@ -326,7 +333,7 @@ const Schedule = () => {
     setDragOverSlot(null);
   };
 
-  const handleDrop = (e: React.DragEvent, targetDoctorId: string, targetTime: string) => {
+  const handleDrop = async (e: React.DragEvent, targetDoctorId: string, targetTime: string) => {
     e.preventDefault();
     setDragOverSlot(null);
 
@@ -359,7 +366,10 @@ const Schedule = () => {
       endTime: newEndDate.toISOString(),
     };
 
-    store.saveVisit(updatedVisit);
+    await store.saveVisit(updatedVisit);
+    // Refresh visits to show the update
+    setVisits(store.getVisits());
+    setVisitsRefreshKey(prev => prev + 1);
     toast.success("Запись перемещена");
     setDraggedAppointment(null);
   };
@@ -1190,6 +1200,10 @@ function AppointmentDialog({
     };
 
     await store.saveVisit(visit);
+
+    // Refresh visits to show the update immediately
+    setVisits(store.getVisits());
+    setVisitsRefreshKey(prev => prev + 1);
 
     // Update patient balance
     const refreshedPatients = store.getPatients();
