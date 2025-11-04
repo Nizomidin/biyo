@@ -3,9 +3,8 @@ import { store } from "@/lib/store";
 import { LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Calendar, Users, TrendingUp, Search } from "lucide-react";
+import { Calendar, Users, TrendingUp } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
 
 export function Navbar() {
   const location = useLocation();
@@ -72,15 +71,6 @@ export function Navbar() {
           ))}
         </nav>
 
-        <div className="flex items-center gap-4">
-          <div className="relative w-80">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Поиск пациентов..."
-              className="pl-10 bg-secondary border-0"
-            />
-          </div>
-        </div>
       </div>
     </header>
   );
