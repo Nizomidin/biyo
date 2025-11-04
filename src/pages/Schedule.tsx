@@ -961,13 +961,13 @@ function AppointmentDialog({
   const [patients, setPatients] = useState(initialPatients);
   const [services, setServices] = useState(initialServices);
   
-  // Refresh patients and services list when dialog opens
+  // Refresh patients and services list when dialog opens (only once)
   useEffect(() => {
     if (open) {
       setPatients(store.getPatients());
       setServices(store.getServices());
     }
-  }, [open, initialServices]);
+  }, [open]); // Only depend on open, not on initialServices which changes constantly
   const [patientId, setPatientId] = useState(appointment?.patientId || "");
   const [patientSearchOpen, setPatientSearchOpen] = useState(false);
   const [isCreatingPatientDialogOpen, setIsCreatingPatientDialogOpen] = useState(false);
