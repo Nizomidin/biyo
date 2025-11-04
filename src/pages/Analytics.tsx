@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Users, Calendar, DollarSign, TrendingUp, TrendingDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import {
