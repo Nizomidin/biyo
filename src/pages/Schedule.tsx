@@ -1054,9 +1054,15 @@ function AppointmentDialog({
 
   // Load appointment data when editing
   useEffect(() => {
-    if (appointment && open) {
+    if (!open) {
+      setIsLoading(false);
+      return;
+    }
+
+    if (appointment) {
       setIsLoading(true);
-      setTimeout(() => {
+      // Use setTimeout to ensure patients array is loaded
+      const timeoutId = setTimeout(() => {
         const patient = patients.find((p) => p.id === appointment.patientId);
         const appointmentStart = format(parseISO(appointment.startTime), "HH:mm");
         const appointmentEnd = format(parseISO(appointment.endTime), "HH:mm");
@@ -1090,8 +1096,10 @@ function AppointmentDialog({
         setCost(appointment.cost.toString());
         setNotes(appointment.notes || "");
         setIsLoading(false);
-      }, 100);
-    } else if (!appointment && open) {
+      }, 150);
+      
+      return () => clearTimeout(timeoutId);
+    } else {
       // Reset for new appointment
       const slotTime = selectedSlot.time;
       setPatientId("");
@@ -1105,8 +1113,9 @@ function AppointmentDialog({
       setNotes("");
       setIsLoading(false);
     }
+    // Use more specific dependencies to prevent infinite loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [appointment, open, selectedSlot]);
+  }, [appointment?.id, open, selectedSlot?.doctorId, selectedSlot?.time]);
 
   // Auto-fill cost when services are selected (only if cost is empty and not editing)
   useEffect(() => {
@@ -1158,7 +1167,7 @@ function AppointmentDialog({
       const patientToUpdate = patients.find((p) => p.id === patientId);
       if (patientToUpdate) {
         const updatedPatient = { ...patientToUpdate, teeth: teeth || [] };
-        store.savePatient(updatedPatient);
+        await store.savePatient(updatedPatient);
         // Refresh patients list to get updated data
         const updatedPatients = store.getPatients();
         setPatients(updatedPatients);
@@ -1199,25 +1208,25 @@ function AppointmentDialog({
       createdAt: appointment?.createdAt || new Date().toISOString(),
     };
 
-    await store.saveVisit(visit);
+    try {
+      await store.saveVisit(visit);
 
-    // Refresh visits to show the update immediately
-    setVisits(store.getVisits());
-    setVisitsRefreshKey(prev => prev + 1);
+      // Update patient balance
+      const refreshedPatients = store.getPatients();
+      const patient = refreshedPatients.find((p) => p.id === patientId);
+      if (patient) {
+        patient.balance = store.calculatePatientBalance(patientId);
+        await store.savePatient(patient);
+      }
 
-    // Update patient balance
-    const refreshedPatients = store.getPatients();
-    const patient = refreshedPatients.find((p) => p.id === patientId);
-    if (patient) {
-      patient.balance = store.calculatePatientBalance(patientId);
-      await store.savePatient(patient);
-      // Refresh patients list again after balance update
-      setPatients(store.getPatients());
+      toast.success(appointment ? "Запись обновлена" : "Запись создана");
+      setIsLoading(false);
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Error saving visit:', error);
+      toast.error("Ошибка при сохранении записи");
+      setIsLoading(false);
     }
-
-    toast.success(appointment ? "Запись обновлена" : "Запись создана");
-    setIsLoading(false);
-    onOpenChange(false);
   };
 
   const handlePatientSelect = (patientId: string) => {
