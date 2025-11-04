@@ -1,16 +1,25 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { store, User, Clinic } from "@/lib/store";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 
 const SignUp = () => {
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState(1);
   const [email, setEmail] = useState("");
+  
+  // Pre-fill email from URL parameter if provided
+  useEffect(() => {
+    const emailParam = searchParams.get("email");
+    if (emailParam) {
+      setEmail(emailParam);
+    }
+  }, [searchParams]);
   const [clinicName, setClinicName] = useState("");
   const [proficiency, setProficiency] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);

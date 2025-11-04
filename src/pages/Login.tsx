@@ -25,8 +25,9 @@ const Login = () => {
     const user = store.getUserByEmail(email);
     
     if (!user) {
-      toast.error("Пользователь с таким email не найден");
+      // User doesn't exist, redirect to signup with email pre-filled
       setIsLoading(false);
+      navigate(`/signup?email=${encodeURIComponent(email)}`);
       return;
     }
 
