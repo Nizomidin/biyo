@@ -1,5 +1,13 @@
 // Data store with localStorage persistence and API sync
-import { apiClient } from './api';
+// Lazy import apiClient to avoid circular dependency
+let apiClient: any = null;
+const getApiClient = async () => {
+  if (!apiClient) {
+    const apiModule = await import('./api');
+    apiClient = apiModule.apiClient;
+  }
+  return apiClient;
+};
 
 // Enable API sync (set to true to enable backend sync)
 // Default to true for full cross-device sync
@@ -176,7 +184,7 @@ class Store {
     
     // Sync to API in background (don't wait for it)
     if (ENABLE_API_SYNC) {
-      apiClient.savePatient(patient).catch(err => console.error('API sync failed:', err));
+      getApiClient().then(client => client.savePatient(patient)).catch(err => console.error('API sync failed:', err));
     }
   }
 
@@ -230,7 +238,7 @@ class Store {
     
     // Sync to API in background
     if (ENABLE_API_SYNC) {
-      apiClient.saveDoctor(doctor).catch(err => console.error('API sync failed:', err));
+      getApiClient().then(client => client.saveDoctor(doctor)).catch(err => console.error('API sync failed:', err));
     }
   }
 
@@ -277,7 +285,7 @@ class Store {
     
     // Sync to API in background
     if (ENABLE_API_SYNC) {
-      apiClient.saveService(service).catch(err => console.error('API sync failed:', err));
+      getApiClient().then(client => client.saveService(service)).catch(err => console.error('API sync failed:', err));
     }
   }
 
@@ -327,7 +335,7 @@ class Store {
     
     // Sync to API in background
     if (ENABLE_API_SYNC) {
-      apiClient.saveVisit(visit).catch(err => console.error('API sync failed:', err));
+      getApiClient().then(client => client.saveVisit(visit)).catch(err => console.error('API sync failed:', err));
     }
   }
 
@@ -365,7 +373,7 @@ class Store {
     
     // Sync to API in background
     if (ENABLE_API_SYNC) {
-      apiClient.addPayment(visitId, amount).catch(err => console.error('API sync failed:', err));
+      getApiClient().then(client => client.addPayment(visitId, amount)).catch(err => console.error('API sync failed:', err));
     }
 
     // Update patient balance
@@ -407,7 +415,7 @@ class Store {
     
     // Sync to API in background
     if (ENABLE_API_SYNC) {
-      apiClient.saveFile(file).catch(err => console.error('API sync failed:', err));
+      getApiClient().then(client => client.saveFile(file)).catch(err => console.error('API sync failed:', err));
     }
   }
 
@@ -526,12 +534,13 @@ class Store {
 
     try {
       // Fetch all data from API
+      const client = await getApiClient();
       const [patients, doctors, services, visits, files] = await Promise.all([
-        apiClient.getPatients(clinicId),
-        apiClient.getDoctors(clinicId),
-        apiClient.getServices(clinicId),
-        apiClient.getVisits(clinicId),
-        apiClient.getFiles(undefined, clinicId),
+        client.getPatients(clinicId),
+        client.getDoctors(clinicId),
+        client.getServices(clinicId),
+        client.getVisits(clinicId),
+        client.getFiles(undefined, clinicId),
       ]);
 
       // Merge with localStorage (API data takes precedence)
@@ -629,7 +638,7 @@ class Store {
     
     // Sync to API in background
     if (ENABLE_API_SYNC) {
-      apiClient.saveUser(user).catch(err => console.error('API sync failed:', err));
+      getApiClient().then(client => client.saveUser(user)).catch(err => console.error('API sync failed:', err));
     }
   }
 
@@ -657,7 +666,7 @@ class Store {
     
     // Sync to API in background
     if (ENABLE_API_SYNC) {
-      apiClient.saveClinic(clinic).catch(err => console.error('API sync failed:', err));
+      getApiClient().then(client => client.saveClinic(clinic)).catch(err => console.error('API sync failed:', err));
     }
   }
 
