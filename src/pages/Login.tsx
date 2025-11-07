@@ -1,16 +1,44 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { store, Doctor } from "@/lib/store";
+import { store, Doctor, User } from "@/lib/store";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [availableAccounts, setAvailableAccounts] = useState<User[]>([]);
+  const [isFetchingAccounts, setIsFetchingAccounts] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAccounts = async () => {
+      setIsFetchingAccounts(true);
+      try {
+        const users = await store.fetchAllUsersFromAPI();
+        if (isMounted) {
+          setAvailableAccounts(users);
+        }
+      } catch (error) {
+        console.error("Failed to load accounts:", error);
+      } finally {
+        if (isMounted) {
+          setIsFetchingAccounts(false);
+        }
+      }
+    };
+
+    loadAccounts();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,13 +50,23 @@ const Login = () => {
       return;
     }
 
-    const user = store.getUserByEmail(email);
+    let user = store.getUserByEmail(email);
+
+    if (!user) {
+      user = await store.fetchUserByEmailFromAPI(email) || undefined;
+    }
     
     if (!user) {
       // User doesn't exist, redirect to signup with email pre-filled
       setIsLoading(false);
       navigate(`/signup?email=${encodeURIComponent(email)}`);
       return;
+    }
+
+    // Ensure clinic info is cached before continuing
+    const clinic = store.getClinicById(user.clinicId);
+    if (!clinic) {
+      await store.fetchClinicByIdFromAPI(user.clinicId);
     }
 
     store.setCurrentUser(user);
@@ -114,6 +152,36 @@ const Login = () => {
             >
               Зарегистрироваться
             </Button>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Доступные аккаунты</p>
+              {isFetchingAccounts && (
+                <span className="text-xs text-muted-foreground">Загрузка...</span>
+              )}
+            </div>
+            {availableAccounts.length > 0 ? (
+              <div className="max-h-48 overflow-y-auto rounded-md border p-2 space-y-1">
+                {availableAccounts.map((account) => (
+                  <button
+                    key={account.id}
+                    type="button"
+                    onClick={() => setEmail(account.email)}
+                    className="w-full text-left px-3 py-2 rounded-md hover:bg-secondary transition flex items-center justify-between"
+                  >
+                    <span className="text-sm font-medium">{account.email}</span>
+                    <span className="text-xs uppercase text-muted-foreground">{account.role}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground text-center">
+                {isFetchingAccounts
+                  ? "Подгружаем список аккаунтов..."
+                  : "Аккаунты пока не найдены"}
+              </p>
+            )}
           </div>
         </div>
       </Card>

@@ -145,6 +145,38 @@ const saveToStorage = <T>(key: string, data: T[]): void => {
 
 // Store class
 class Store {
+  private upsertUsersLocally(usersToMerge: User | User[]): void {
+    const incoming = Array.isArray(usersToMerge) ? usersToMerge : [usersToMerge];
+    if (incoming.length === 0) {
+      return;
+    }
+
+    const existing = getFromStorage<User>(STORAGE_KEYS.USERS, []);
+    const byId = new Map(existing.map((user) => [user.id, user]));
+
+    incoming.forEach((user) => {
+      byId.set(user.id, user);
+    });
+
+    saveToStorage(STORAGE_KEYS.USERS, Array.from(byId.values()));
+  }
+
+  private upsertClinicsLocally(clinicsToMerge: Clinic | Clinic[]): void {
+    const incoming = Array.isArray(clinicsToMerge) ? clinicsToMerge : [clinicsToMerge];
+    if (incoming.length === 0) {
+      return;
+    }
+
+    const existing = getFromStorage<Clinic>(STORAGE_KEYS.CLINICS, []);
+    const byId = new Map(existing.map((clinic) => [clinic.id, clinic]));
+
+    incoming.forEach((clinic) => {
+      byId.set(clinic.id, clinic);
+    });
+
+    saveToStorage(STORAGE_KEYS.CLINICS, Array.from(byId.values()));
+  }
+
   // Helper to get current user's clinic ID
   getCurrentClinicId(): string | null {
     const currentUser = this.getCurrentUser();
@@ -549,12 +581,14 @@ class Store {
         console.warn('API client not available, skipping sync');
         return;
       }
-      const [patients, doctors, services, visits, files] = await Promise.all([
+      const [patients, doctors, services, visits, files, clinics, clinicUsers] = await Promise.all([
         client.getPatients(clinicId),
         client.getDoctors(clinicId),
         client.getServices(clinicId),
         client.getVisits(clinicId),
         client.getFiles(undefined, clinicId),
+        client.getClinics(),
+        client.getUsers(clinicId),
       ]);
 
       // Merge with localStorage (API data takes precedence)
@@ -628,10 +662,92 @@ class Store {
         saveToStorage(STORAGE_KEYS.FILES, mergedFiles);
       }
 
+      if (clinics.length > 0) {
+        this.upsertClinicsLocally(clinics);
+      }
+
+      if (clinicUsers.length > 0) {
+        this.upsertUsersLocally(clinicUsers);
+      }
+
       // Trigger refresh event
       window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'sync' } }));
     } catch (error) {
       console.error('API sync failed:', error);
+    }
+  }
+
+  async fetchUserByEmailFromAPI(email: string): Promise<User | null> {
+    if (!ENABLE_API_SYNC) {
+      return null;
+    }
+
+    try {
+      const client = await getApiClient();
+      const user = await client.getUserByEmail(email);
+      if (user) {
+        await this.saveUser(user, { skipApi: true });
+        return user;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to fetch user by email from API:', error);
+      return null;
+    }
+  }
+
+  async fetchAllUsersFromAPI(clinicId?: string): Promise<User[]> {
+    if (!ENABLE_API_SYNC) {
+      return this.getUsers();
+    }
+
+    try {
+      const client = await getApiClient();
+      const users = await client.getUsers(clinicId);
+      if (users.length > 0) {
+        this.upsertUsersLocally(users);
+      }
+      return users;
+    } catch (error) {
+      console.error('Failed to fetch users from API:', error);
+      return this.getUsers();
+    }
+  }
+
+  async fetchClinicsFromAPI(): Promise<Clinic[]> {
+    if (!ENABLE_API_SYNC) {
+      return this.getClinics();
+    }
+
+    try {
+      const client = await getApiClient();
+      const clinics = await client.getClinics();
+      if (clinics.length > 0) {
+        this.upsertClinicsLocally(clinics);
+      }
+      return clinics;
+    } catch (error) {
+      console.error('Failed to fetch clinics from API:', error);
+      return this.getClinics();
+    }
+  }
+
+  async fetchClinicByIdFromAPI(id: string): Promise<Clinic | null> {
+    if (!ENABLE_API_SYNC) {
+      return null;
+    }
+
+    try {
+      const client = await getApiClient();
+      const clinic = await client.getClinicById(id);
+      if (clinic) {
+        await this.saveClinic(clinic, { skipApi: true });
+        return clinic;
+      }
+      return null;
+    } catch (error) {
+      console.error('Failed to fetch clinic by id from API:', error);
+      return null;
     }
   }
 
@@ -640,19 +756,16 @@ class Store {
     return getFromStorage<User>(STORAGE_KEYS.USERS, []);
   }
 
-  async saveUser(user: User): Promise<void> {
-    const users = this.getUsers();
-    const index = users.findIndex((u) => u.id === user.id);
-    if (index >= 0) {
-      users[index] = user;
-    } else {
-      users.push(user);
-    }
-    saveToStorage(STORAGE_KEYS.USERS, users);
-    
-    // Sync to API in background
-    if (ENABLE_API_SYNC) {
-      getApiClient().then(client => client.saveUser(user)).catch(err => console.error('API sync failed:', err));
+  async saveUser(user: User, options?: { skipApi?: boolean }): Promise<void> {
+    this.upsertUsersLocally(user);
+
+    if (ENABLE_API_SYNC && !options?.skipApi) {
+      try {
+        const client = await getApiClient();
+        await client.saveUser(user);
+      } catch (error) {
+        console.error('API sync failed:', error);
+      }
     }
   }
 
@@ -668,19 +781,16 @@ class Store {
     return getFromStorage<Clinic>(STORAGE_KEYS.CLINICS, []);
   }
 
-  async saveClinic(clinic: Clinic): Promise<void> {
-    const clinics = this.getClinics();
-    const index = clinics.findIndex((c) => c.id === clinic.id);
-    if (index >= 0) {
-      clinics[index] = clinic;
-    } else {
-      clinics.push(clinic);
-    }
-    saveToStorage(STORAGE_KEYS.CLINICS, clinics);
-    
-    // Sync to API in background
-    if (ENABLE_API_SYNC) {
-      getApiClient().then(client => client.saveClinic(clinic)).catch(err => console.error('API sync failed:', err));
+  async saveClinic(clinic: Clinic, options?: { skipApi?: boolean }): Promise<void> {
+    this.upsertClinicsLocally(clinic);
+
+    if (ENABLE_API_SYNC && !options?.skipApi) {
+      try {
+        const client = await getApiClient();
+        await client.saveClinic(clinic);
+      } catch (error) {
+        console.error('API sync failed:', error);
+      }
     }
   }
 

@@ -1,21 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-let storage: any = null;
-
-function getStorage() {
-  if (!storage) {
-    if (typeof process !== 'undefined' && process.env.DATA_STORE) {
-      try {
-        storage = JSON.parse(process.env.DATA_STORE);
-      } catch (e) {
-        storage = { patients: [], doctors: [], services: [], visits: [], files: [], users: [], clinics: [] };
-      }
-    } else {
-      storage = { patients: [], doctors: [], services: [], visits: [], files: [], users: [], clinics: [] };
-    }
-  }
-  return storage;
-}
+import type { User } from '../src/lib/store';
+import { STORAGE_KEYS, findItem, getCollection, upsertItem } from './_kvStore';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,31 +11,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const storage = getStorage();
   const email = req.query.email as string;
   const clinicId = req.query.clinicId as string;
 
   if (req.method === 'GET') {
     if (email) {
-      const user = (storage.users || []).find((u: any) => u.email === email);
+      const user = await findItem<User>(STORAGE_KEYS.USERS, (u) => u.email === email);
       return res.status(200).json(user || null);
-    } else if (clinicId) {
-      const users = (storage.users || []).filter((u: any) => u.clinicId === clinicId);
-      return res.status(200).json(users);
-    } else {
-      return res.status(200).json(storage.users || []);
     }
+
+    const users = await getCollection<User>(STORAGE_KEYS.USERS);
+    if (clinicId) {
+      return res.status(200).json(users.filter((u) => u.clinicId === clinicId));
+    }
+    return res.status(200).json(users);
   }
 
   if (req.method === 'POST') {
-    const user = { ...req.body, id: req.body.id || `user_${Date.now()}_${Math.random()}` };
-    if (!storage.users) storage.users = [];
-    const index = storage.users.findIndex((u: any) => u.id === user.id);
-    if (index >= 0) {
-      storage.users[index] = user;
-    } else {
-      storage.users.push(user);
-    }
+    const user: User = {
+      ...req.body,
+      id: req.body.id || `user_${Date.now()}_${Math.random()}`,
+      createdAt: req.body.createdAt || new Date().toISOString(),
+    };
+
+    await upsertItem<User>(STORAGE_KEYS.USERS, user);
     return res.status(200).json(user);
   }
 

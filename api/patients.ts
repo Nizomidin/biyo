@@ -1,24 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-// Simple in-memory storage (in production, use Supabase or another database)
-let storage: any = null;
-
-// Initialize storage from environment or use in-memory
-function getStorage() {
-  if (!storage) {
-    // Try to get from environment (could be JSON string)
-    if (typeof process !== 'undefined' && process.env.DATA_STORE) {
-      try {
-        storage = JSON.parse(process.env.DATA_STORE);
-      } catch (e) {
-        storage = { patients: [], doctors: [], services: [], visits: [], files: [], users: [], clinics: [] };
-      }
-    } else {
-      storage = { patients: [], doctors: [], services: [], visits: [], files: [], users: [], clinics: [] };
-    }
-  }
-  return storage;
-}
+import type { Patient } from '../src/lib/store';
+import { STORAGE_KEYS, deleteWhere, getCollection, upsertItem } from './_kvStore';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
@@ -30,43 +12,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const storage = getStorage();
   const clinicId = req.query.clinicId as string;
 
   if (req.method === 'GET') {
-    let patients = storage.patients || [];
+    let patients = await getCollection<Patient>(STORAGE_KEYS.PATIENTS);
     if (clinicId) {
-      patients = patients.filter((p: any) => p.clinicId === clinicId);
+      patients = patients.filter((p) => p.clinicId === clinicId);
     }
     return res.status(200).json(patients);
   }
 
   if (req.method === 'POST') {
-    const patient = {
+    const now = new Date().toISOString();
+    const patient: Patient = {
       ...req.body,
       id: req.body.id || `patient_${Date.now()}_${Math.random()}`,
-      updatedAt: new Date().toISOString(),
+      createdAt: req.body.createdAt || now,
+      updatedAt: now,
     };
-    
-    if (!storage.patients) storage.patients = [];
-    const index = storage.patients.findIndex((p: any) => p.id === patient.id);
-    
-    if (index >= 0) {
-      storage.patients[index] = patient;
-    } else {
-      patient.createdAt = new Date().toISOString();
-      storage.patients.push(patient);
-    }
-    
+
+    await upsertItem<Patient>(STORAGE_KEYS.PATIENTS, patient);
     return res.status(200).json(patient);
   }
 
   if (req.method === 'DELETE') {
     const id = req.query.id as string;
     if (id && clinicId) {
-      storage.patients = (storage.patients || []).filter(
-        (p: any) => !(p.id === id && p.clinicId === clinicId)
-      );
+      await deleteWhere<Patient>(STORAGE_KEYS.PATIENTS, (p) => p.id === id && p.clinicId === clinicId);
     }
     return res.status(200).json({ success: true });
   }

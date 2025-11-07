@@ -1,21 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-
-let storage: any = null;
-
-function getStorage() {
-  if (!storage) {
-    if (typeof process !== 'undefined' && process.env.DATA_STORE) {
-      try {
-        storage = JSON.parse(process.env.DATA_STORE);
-      } catch (e) {
-        storage = { patients: [], doctors: [], services: [], visits: [], files: [], users: [], clinics: [] };
-      }
-    } else {
-      storage = { patients: [], doctors: [], services: [], visits: [], files: [], users: [], clinics: [] };
-    }
-  }
-  return storage;
-}
+import type { Visit } from '../src/lib/store';
+import { STORAGE_KEYS, deleteWhere, getCollection, upsertItem } from './_kvStore';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,37 +11,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const storage = getStorage();
   const clinicId = req.query.clinicId as string;
 
   if (req.method === 'GET') {
-    let visits = storage.visits || [];
+    let visits = await getCollection<Visit>(STORAGE_KEYS.VISITS);
     if (clinicId) {
-      visits = visits.filter((v: any) => v.clinicId === clinicId);
+      visits = visits.filter((v) => v.clinicId === clinicId);
     }
     return res.status(200).json(visits);
   }
 
   if (req.method === 'POST') {
-    const visit = {
+    const visit: Visit = {
       ...req.body,
       id: req.body.id || `visit_${Date.now()}_${Math.random()}`,
       createdAt: req.body.createdAt || new Date().toISOString(),
     };
-    if (!storage.visits) storage.visits = [];
-    const index = storage.visits.findIndex((v: any) => v.id === visit.id);
-    if (index >= 0) {
-      storage.visits[index] = visit;
-    } else {
-      storage.visits.push(visit);
-    }
+
+    await upsertItem<Visit>(STORAGE_KEYS.VISITS, visit);
     return res.status(200).json(visit);
   }
 
   if (req.method === 'DELETE') {
     const id = req.query.id as string;
     if (id && clinicId) {
-      storage.visits = (storage.visits || []).filter((v: any) => !(v.id === id && v.clinicId === clinicId));
+      await deleteWhere<Visit>(STORAGE_KEYS.VISITS, (v) => v.id === id && v.clinicId === clinicId);
     }
     return res.status(200).json({ success: true });
   }

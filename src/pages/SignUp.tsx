@@ -40,7 +40,12 @@ const SignUp = () => {
     }
   }, [clinicName]);
 
-  const handleStep1 = (e: React.FormEvent) => {
+  useEffect(() => {
+    store.fetchClinicsFromAPI().catch((error) => console.error('Failed to prefetch clinics:', error));
+    store.fetchAllUsersFromAPI().catch((error) => console.error('Failed to prefetch users:', error));
+  }, []);
+
+  const handleStep1 = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) {
       toast.error("Введите email");
@@ -55,9 +60,11 @@ const SignUp = () => {
       return;
     }
     
-    // Check if clinic already has an admin
+    await store.fetchClinicsFromAPI();
     const existingClinics = store.getClinics();
     const existingClinic = existingClinics.find((c) => c.name === clinicName);
+
+    // Check if clinic already has an admin
     
     if (existingClinic) {
       const clinicUsers = store.getUsersByClinic(existingClinic.id);
@@ -80,6 +87,11 @@ const SignUp = () => {
   const handleSignUp = async () => {
     setIsLoading(true);
 
+    await Promise.all([
+      store.fetchAllUsersFromAPI(),
+      store.fetchClinicsFromAPI(),
+    ]);
+
     // Check if user already exists
     if (store.getUserByEmail(email)) {
       toast.error("Пользователь с таким email уже существует");
@@ -100,7 +112,7 @@ const SignUp = () => {
         name: clinicName,
         createdAt: new Date().toISOString(),
       };
-      store.saveClinic(clinic);
+      await store.saveClinic(clinic);
     }
 
     // Check if clinic already has admin (additional check)
@@ -124,7 +136,7 @@ const SignUp = () => {
       createdAt: new Date().toISOString(),
     };
 
-    store.saveUser(user);
+    await store.saveUser(user);
     store.setCurrentUser(user);
     
     // If user is not admin, create a doctor profile for them

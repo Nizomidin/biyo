@@ -97,6 +97,13 @@ const Profile = () => {
   // Check if this is the super admin account
   const isSuperAdmin = currentUser?.email === "forthejuveuj@gmail.com";
 
+  useEffect(() => {
+    if (isSuperAdmin) {
+      store.fetchClinicsFromAPI().catch((error) => console.error('Failed to fetch clinics for super admin:', error));
+      store.fetchAllUsersFromAPI().catch((error) => console.error('Failed to fetch users for super admin:', error));
+    }
+  }, [isSuperAdmin]);
+
   // Super admin data - get all data across all clinics
   const allClinics = isSuperAdmin ? store.getClinics() : [];
   const allPatients = isSuperAdmin ? store.getAllPatients() : [];
