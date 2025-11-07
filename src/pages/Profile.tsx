@@ -96,6 +96,7 @@ const Profile = () => {
 
   // Check if this is the super admin account
   const isSuperAdmin = currentUser?.email === "forthejuveuj@gmail.com";
+  const canMigrateData = isSuperAdmin || currentUser.role === "admin";
 
   useEffect(() => {
     if (isSuperAdmin) {
@@ -412,6 +413,20 @@ const Profile = () => {
             )}
           </div>
         </Card>
+
+          {canMigrateData && (
+            <Card className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-medium mb-1">Миграция локальных данных</h3>
+                  <p className="text-sm text-muted-foreground max-w-md">
+                    Перенесите локальные аккаунты, клиники и пациентов в облако, чтобы иметь к ним доступ на любом устройстве.
+                  </p>
+                </div>
+                <Button onClick={() => navigate("/migrate")}>Открыть инструмент</Button>
+              </div>
+            </Card>
+          )}
 
               {/* Logout Button */}
               <Card className="p-6">

@@ -751,6 +751,109 @@ class Store {
     }
   }
 
+  async migrateLocalDataToAPI(): Promise<{
+    clinicsMigrated: number;
+    usersMigrated: number;
+    patientsMigrated: number;
+    doctorsMigrated: number;
+    servicesMigrated: number;
+    visitsMigrated: number;
+    filesMigrated: number;
+    errors: string[];
+  }> {
+    if (!ENABLE_API_SYNC) {
+      throw new Error('API sync is disabled. Enable VITE_ENABLE_API_SYNC to migrate data.');
+    }
+
+    const client = await getApiClient();
+    const summary = {
+      clinicsMigrated: 0,
+      usersMigrated: 0,
+      patientsMigrated: 0,
+      doctorsMigrated: 0,
+      servicesMigrated: 0,
+      visitsMigrated: 0,
+      filesMigrated: 0,
+      errors: [] as string[],
+    };
+
+    const clinics = this.getClinics();
+    for (const clinic of clinics) {
+      try {
+        await client.saveClinic(clinic);
+        summary.clinicsMigrated++;
+      } catch (error) {
+        summary.errors.push(`Clinic ${clinic.id}: ${(error as Error).message}`);
+      }
+    }
+
+    const users = this.getAllUsers();
+    for (const user of users) {
+      try {
+        await client.saveUser(user);
+        summary.usersMigrated++;
+      } catch (error) {
+        summary.errors.push(`User ${user.id}: ${(error as Error).message}`);
+      }
+    }
+
+    const patients = this.getAllPatients();
+    for (const patient of patients) {
+      try {
+        await client.savePatient(patient);
+        summary.patientsMigrated++;
+      } catch (error) {
+        summary.errors.push(`Patient ${patient.id}: ${(error as Error).message}`);
+      }
+    }
+
+    const doctors = this.getAllDoctors();
+    for (const doctor of doctors) {
+      try {
+        await client.saveDoctor(doctor);
+        summary.doctorsMigrated++;
+      } catch (error) {
+        summary.errors.push(`Doctor ${doctor.id}: ${(error as Error).message}`);
+      }
+    }
+
+    const services = this.getAllServices();
+    for (const service of services) {
+      try {
+        await client.saveService(service);
+        summary.servicesMigrated++;
+      } catch (error) {
+        summary.errors.push(`Service ${service.id}: ${(error as Error).message}`);
+      }
+    }
+
+    const visits = this.getAllVisits();
+    for (const visit of visits) {
+      try {
+        await client.saveVisit(visit);
+        summary.visitsMigrated++;
+      } catch (error) {
+        summary.errors.push(`Visit ${visit.id}: ${(error as Error).message}`);
+      }
+    }
+
+    const files = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
+    for (const file of files) {
+      if (file && typeof file.file !== 'string') {
+        summary.errors.push(`File ${file.id}: Skipped (binary file cannot be migrated automatically)`);
+        continue;
+      }
+      try {
+        await client.saveFile(file);
+        summary.filesMigrated++;
+      } catch (error) {
+        summary.errors.push(`File ${file.id}: ${(error as Error).message}`);
+      }
+    }
+
+    return summary;
+  }
+
   // Authentication
   getUsers(): User[] {
     return getFromStorage<User>(STORAGE_KEYS.USERS, []);

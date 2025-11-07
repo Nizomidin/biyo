@@ -12,6 +12,7 @@ import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
+import MigrateData from "./pages/MigrateData";
 import { store } from "./lib/store";
 
 const queryClient = new QueryClient();
@@ -157,6 +158,17 @@ const App = () => {
                   <div className="min-h-screen bg-background">
                     <Navbar />
                     <Profile />
+                  </div>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/migrate"
+              element={
+                <ProtectedRoute>
+                  <div className="min-h-screen bg-background">
+                    <Navbar />
+                    <MigrateData />
                   </div>
                 </ProtectedRoute>
               }
