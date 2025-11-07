@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import type { Patient } from '../src/lib/store';
-import { STORAGE_KEYS, deleteWhere, getCollection, upsertItem } from './_kvStore';
+import { STORAGE_KEYS, deleteWhere, getCollection, upsertItem } from './_kvStore.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
