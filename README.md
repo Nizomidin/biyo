@@ -59,6 +59,24 @@ This project is built with:
 - React
 - shadcn-ui
 - Tailwind CSS
+- Tauri (desktop wrapper)
+
+## Desktop (Tauri) development
+
+You can run the app as an offline-first desktop experience using Tauri. Make sure the Rust toolchain is installed (`rustup` recommended), then:
+
+```sh
+# install dependencies
+npm install
+
+# run the desktop app in dev mode (wraps npm run dev)
+npm run tauri:dev
+
+# create a distributable build (Windows .msi/.exe, plus other targets on macOS/Linux)
+npm run tauri:build
+```
+
+The desktop build points to the same local data store as the web app and keeps API sync disabled by default so it works fully offline. You can re-enable remote sync by setting `VITE_ENABLE_API_SYNC=true` before running the Tauri commands.
 
 ## How can I deploy this project?
 
