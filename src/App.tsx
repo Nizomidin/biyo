@@ -13,7 +13,6 @@ import SignUp from "./pages/SignUp";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import MigrateData from "./pages/MigrateData";
-import Landing from "./pages/Landing";
 import { store } from "./lib/store";
 
 const queryClient = new QueryClient();
@@ -130,7 +129,7 @@ const App = () => {
                     </div>
                   </ProtectedRoute>
                 ) : (
-                  <Landing />
+                  <Navigate to="/signup" replace />
                 )
               }
             />
