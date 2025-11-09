@@ -13,6 +13,7 @@ import SignUp from "./pages/SignUp";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import MigrateData from "./pages/MigrateData";
+import Landing from "./pages/Landing";
 import { store } from "./lib/store";
 
 const queryClient = new QueryClient();
@@ -121,12 +122,16 @@ const App = () => {
             <Route
               path="/"
               element={
-                <ProtectedRoute>
-                  <div className="min-h-screen bg-background">
-                    <Navbar />
-                    <Schedule />
-                  </div>
-                </ProtectedRoute>
+                store.getCurrentUser() ? (
+                  <ProtectedRoute>
+                    <div className="min-h-screen bg-background">
+                      <Navbar />
+                      <Schedule />
+                    </div>
+                  </ProtectedRoute>
+                ) : (
+                  <Landing />
+                )
               }
             />
             <Route

@@ -40,7 +40,7 @@ export function Navbar() {
   const handleLogout = () => {
     store.logout();
     toast.success("Выход выполнен");
-    navigate("/login", { replace: true });
+    navigate("/", { replace: true });
   };
 
   return (
