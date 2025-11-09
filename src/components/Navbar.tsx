@@ -65,14 +65,19 @@ export function Navbar() {
               </span>
             </div>
           </Link>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-9 w-9">
-              <Sun className="h-5 w-5 hidden theme-dark:block" />
-              <Moon className="h-5 w-5 theme-dark:hidden" />
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              className="h-11 w-11"
+            >
+              <Sun className="h-6 w-6 hidden theme-dark:block" />
+              <Moon className="h-6 w-6 theme-dark:hidden" />
             </Button>
             <Link to="/profile">
-              <Button variant="ghost" size="icon" className="h-9 w-9">
-                <User className="h-5 w-5" />
+              <Button variant="ghost" size="icon" className="h-11 w-11">
+                <User className="h-6 w-6" />
               </Button>
             </Link>
           </div>
