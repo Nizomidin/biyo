@@ -205,10 +205,15 @@ class ApiClient {
   }
 
   // Payments
-  async addPayment(visitId: string, amount: number, date?: string): Promise<Payment | null> {
+  async addPayment(
+    visitId: string,
+    amount: number,
+    method?: Payment["method"],
+    date?: string
+  ): Promise<Payment | null> {
     const result = await this.request<Payment>('/payments', {
       method: 'POST',
-      body: JSON.stringify({ visitId, amount, date }),
+      body: JSON.stringify({ visitId, amount, method, date }),
     });
     return result.data || null;
   }

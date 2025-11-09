@@ -35,7 +35,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { store, Doctor, Visit, VisitService, Patient, ToothStatus } from "@/lib/store";
+import { store, Doctor, Visit, VisitService, Patient, ToothStatus, Payment } from "@/lib/store";
 import { format, addDays, startOfDay, parseISO, isSameDay } from "date-fns";
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
@@ -153,6 +153,7 @@ const Schedule = () => {
   const [services, setServices] = useState(store.getServices());
   const [visits, setVisits] = useState(store.getVisits());
   const allDoctors = store.getDoctors();
+  const [currentTime, setCurrentTime] = useState(new Date());
   
   // Ensure non-admin users have a doctor profile
   useEffect(() => {
@@ -249,18 +250,24 @@ const Schedule = () => {
   // Get appointments for selected date
   // For non-admin users, only show appointments for their doctor
   const appointments = useMemo(() => {
-    const currentVisits = visits; // Use state visits which are refreshed
+    const currentVisits = store.getVisits(); // Always read fresh visits from store
+    const now = new Date();
     const dayStart = startOfDay(selectedDate);
     const dayEnd = addDays(dayStart, 1);
-    
+
     // Get list of visible doctor IDs
-    const visibleDoctorIds = doctors.map(d => d.id);
+    const visibleDoctorIds = doctors.map((d) => d.id);
 
     return currentVisits
       .filter((v) => {
-        const visitDate = parseISO(v.startTime);
+        const visitStart = parseISO(v.startTime);
         // Filter by date and only show appointments for visible doctors
-        return isSameDay(visitDate, selectedDate) && visibleDoctorIds.includes(v.doctorId);
+        const isSameSelectedDay =
+          visitStart >= dayStart &&
+          visitStart < dayEnd &&
+          visibleDoctorIds.includes(v.doctorId);
+
+        return isSameSelectedDay;
       })
       .map((visit) => {
         const patient = patients.find((p) => p.id === visit.patientId);
@@ -269,6 +276,11 @@ const Schedule = () => {
         const end = parseISO(visit.endTime);
         const duration = (end.getTime() - start.getTime()) / (1000 * 60); // minutes
 
+        let status = visit.status;
+        if (status === "scheduled" && end < now) {
+          status = "completed";
+        }
+
         return {
           id: visit.id,
           doctorId: visit.doctorId,
@@ -276,10 +288,10 @@ const Schedule = () => {
           startTime: format(start, "HH:mm"),
           duration,
           color: doctor?.color || "blue",
-          visit,
+          visit: { ...visit, status },
         } as AppointmentDisplay;
       });
-  }, [selectedDate, doctors, patients, visits, doctorsRefreshKey, visitsRefreshKey]); // Add visits and refresh key to trigger updates
+  }, [selectedDate, doctors, patients, visitsRefreshKey, doctorsRefreshKey]); // Add visits and refresh key to trigger updates
 
   const navigateDate = (direction: "prev" | "next" | "today") => {
     if (direction === "today") {
@@ -413,6 +425,46 @@ const Schedule = () => {
     return conflicts.length > 0;
   };
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 30_000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const renderCurrentTimeIndicator = () => {
+    if (!isSameDay(currentTime, selectedDate)) {
+      return null;
+    }
+
+    const minutesSinceStart =
+      currentTime.getHours() * 60 +
+      currentTime.getMinutes() -
+      7 * 60;
+
+    if (minutesSinceStart < 0 || minutesSinceStart > 16 * 60) {
+      return null;
+    }
+
+    const position = (minutesSinceStart / 30) * SLOT_HEIGHT;
+    const formattedTime = format(currentTime, "HH:mm");
+
+    return (
+      <div
+        className="absolute inset-x-0 pointer-events-none z-30"
+        style={{ top: `${position + 58}px` }}
+      >
+        <div className="relative">
+          <div className="h-0.5 bg-primary"></div>
+          <div className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary bg-background px-3 py-1 text-xs font-semibold text-primary shadow-sm">
+            Сейчас {formattedTime}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-[1400px] mx-auto">
@@ -508,6 +560,7 @@ const Schedule = () => {
             </div>
           ) : (
             <div className="relative overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+              {renderCurrentTimeIndicator()}
               <div
                 className="grid gap-0 relative"
                 style={{
@@ -960,6 +1013,14 @@ function AppointmentDialog({
 }) {
   const [patients, setPatients] = useState(initialPatients);
   const [services, setServices] = useState(initialServices);
+  const formatAmountForInput = (value?: number) =>
+    value === undefined || value === null ? "" : Number(value.toFixed(2)).toString();
+  const parseMoney = (value: string) => {
+    if (!value) return 0;
+    const normalized = value.replace(",", ".").replace(/\s+/g, "");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parseFloat(parsed.toFixed(2)) : 0;
+  };
   
   // Refresh patients and services list when dialog opens (only once)
   useEffect(() => {
@@ -1003,9 +1064,38 @@ function AppointmentDialog({
     }
     return [];
   });
-  const [cost, setCost] = useState(
-    appointment?.cost.toString() || ""
-  );
+  const [cashAmount, setCashAmount] = useState(() => {
+    if (appointment) {
+      if (appointment.cashAmount !== undefined) {
+        return formatAmountForInput(appointment.cashAmount);
+      }
+      const cashPayment = appointment.payments?.find((payment) => payment.method === "cash");
+      if (cashPayment) {
+        return formatAmountForInput(cashPayment.amount);
+      }
+      if (appointment.cost) {
+        return formatAmountForInput(appointment.cost);
+      }
+    }
+    return "";
+  });
+  const [ewalletAmount, setEwalletAmount] = useState(() => {
+    if (appointment) {
+      if (appointment.ewalletAmount !== undefined) {
+        return formatAmountForInput(appointment.ewalletAmount);
+      }
+      const walletPayment = appointment.payments?.find((payment) => payment.method === "ewallet");
+      if (walletPayment) {
+        return formatAmountForInput(walletPayment.amount);
+      }
+    }
+    return "";
+  });
+  const totalCost = useMemo(() => {
+    const cash = parseMoney(cashAmount);
+    const wallet = parseMoney(ewalletAmount);
+    return parseFloat((cash + wallet).toFixed(2));
+  }, [cashAmount, ewalletAmount]);
   const [notes, setNotes] = useState(appointment?.notes || "");
   const [isLoading, setIsLoading] = useState(false);
   const [duration, setDuration] = useState<number | null>(null); // Store duration in minutes
@@ -1093,7 +1183,26 @@ function AppointmentDialog({
             setSelectedServices(appointment.services as VisitService[]);
           }
         }
-        setCost(appointment.cost.toString());
+        const cashPayment = appointment.payments?.find((payment) => payment.method === "cash");
+        const walletPayment = appointment.payments?.find((payment) => payment.method === "ewallet");
+        setCashAmount(() => {
+          if (appointment.cashAmount !== undefined) {
+            return formatAmountForInput(appointment.cashAmount);
+          }
+          if (cashPayment) {
+            return formatAmountForInput(cashPayment.amount);
+          }
+          return formatAmountForInput(appointment.cost);
+        });
+        setEwalletAmount(() => {
+          if (appointment.ewalletAmount !== undefined) {
+            return formatAmountForInput(appointment.ewalletAmount);
+          }
+          if (walletPayment) {
+            return formatAmountForInput(walletPayment.amount);
+          }
+          return "";
+        });
         setNotes(appointment.notes || "");
         setIsLoading(false);
       }, 150);
@@ -1109,7 +1218,8 @@ function AppointmentDialog({
       setDuration(30); // Default 30 minutes
       setSelectedServices([]);
       setTeeth([]);
-      setCost("");
+      setCashAmount("");
+      setEwalletAmount("");
       setNotes("");
       setIsLoading(false);
     }
@@ -1117,18 +1227,23 @@ function AppointmentDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appointment?.id, open, selectedSlot?.doctorId, selectedSlot?.time]);
 
-  // Auto-fill cost when services are selected (only if cost is empty and not editing)
+  // Auto-fill payment amounts when services are selected (only if amounts are empty and not editing)
   useEffect(() => {
-    if (selectedServices.length > 0 && !cost && !appointment) {
-      const totalCost = selectedServices.reduce((sum, vs) => {
+    if (
+      selectedServices.length > 0 &&
+      !appointment &&
+      !cashAmount &&
+      !ewalletAmount
+    ) {
+      const defaultTotal = selectedServices.reduce((sum, vs) => {
         const service = services.find((s) => s.id === vs.serviceId);
         return sum + (service?.defaultPrice || 0) * vs.quantity;
       }, 0);
-      if (totalCost > 0) {
-        setCost(totalCost.toString());
+      if (defaultTotal > 0) {
+        setCashAmount(formatAmountForInput(defaultTotal));
       }
     }
-  }, [selectedServices, cost, services, appointment]);
+  }, [selectedServices, appointment, cashAmount, ewalletAmount, services]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1193,19 +1308,51 @@ function AppointmentDialog({
       return vs;
     });
 
+    const visitId = appointment?.id || `visit_${Date.now()}_${Math.random()}`;
+    const cash = parseMoney(cashAmount);
+    const wallet = parseMoney(ewalletAmount);
+    const combinedCost = parseFloat((cash + wallet).toFixed(2));
+    const nowIso = new Date().toISOString();
+    const existingCashPayment = appointment?.payments?.find((payment) => payment.method === "cash");
+    const existingWalletPayment = appointment?.payments?.find((payment) => payment.method === "ewallet");
+    const makePaymentId = () => `payment_${Date.now()}_${Math.random()}`;
+    const payments: Payment[] = [];
+
+    if (cash > 0) {
+      payments.push({
+        id: existingCashPayment?.id || makePaymentId(),
+        visitId,
+        amount: cash,
+        date: existingCashPayment?.date || nowIso,
+        method: "cash",
+      });
+    }
+
+    if (wallet > 0) {
+      payments.push({
+        id: existingWalletPayment?.id || makePaymentId(),
+        visitId,
+        amount: wallet,
+        date: existingWalletPayment?.date || nowIso,
+        method: "ewallet",
+      });
+    }
+
     const visit: Visit = {
-      id: appointment?.id || `visit_${Date.now()}_${Math.random()}`,
+      id: visitId,
       patientId,
       doctorId,
       startTime: startDateTime.toISOString(),
       endTime: endDateTime.toISOString(),
       services: servicesWithTeeth,
-      cost: parseFloat(cost) || 0,
+      cost: combinedCost,
       notes,
       status: appointment?.status || "scheduled",
-      payments: appointment?.payments || [],
+      payments,
       treatedTeeth: treatedTeethNumbers.length > 0 ? treatedTeethNumbers : undefined,
-      createdAt: appointment?.createdAt || new Date().toISOString(),
+      createdAt: appointment?.createdAt || nowIso,
+      cashAmount: cash,
+      ewalletAmount: wallet,
     };
 
     try {
@@ -1650,17 +1797,40 @@ function AppointmentDialog({
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="appointment-cost">
-              Стоимость
-            </Label>
-            <Input
-              id="appointment-cost"
-              type="number"
-              step="0.01"
-              value={cost}
-              onChange={(e) => setCost(e.target.value)}
-            />
+          <div className="space-y-3">
+            <Label>Оплата</Label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="payment-cash" className="text-xs text-muted-foreground">
+                  Наличные
+                </Label>
+                <Input
+                  id="payment-cash"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={cashAmount}
+                  onChange={(e) => setCashAmount(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="payment-ewallet" className="text-xs text-muted-foreground">
+                  Электронный кошелёк
+                </Label>
+                <Input
+                  id="payment-ewallet"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={ewalletAmount}
+                  onChange={(e) => setEwalletAmount(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
+              <span className="text-muted-foreground">Итого</span>
+              <span className="font-medium">{totalCost.toFixed(2)} смн</span>
+            </div>
           </div>
 
           <div className="space-y-2">

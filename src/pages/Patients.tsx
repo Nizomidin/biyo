@@ -13,6 +13,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -50,9 +51,35 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ToothChart } from "@/components/ToothChart";
 import { store, Patient, ToothStatus, VisitService } from "@/lib/store";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
+
+const formatAmountForInput = (value?: number) =>
+  value === undefined || value === null
+    ? ""
+    : Number(value.toFixed(2)).toString();
+
+const parseAmountInput = (
+  value: string,
+  treatEmptyAsZero = true
+): number | null => {
+  if (!value || !value.trim()) {
+    return treatEmptyAsZero ? 0 : null;
+  }
+  const normalized = value.replace(",", ".").replace(/\s+/g, "");
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parseFloat(parsed.toFixed(2));
+};
+
+function normalizeTeeth(teeth: ToothStatus[] = []): ToothStatus[] {
+  return [...teeth]
+    .map(({ toothNumber, status }) => ({ toothNumber, status }))
+    .sort((a, b) => a.toothNumber - b.toothNumber);
+}
 
 type FilterType = "debt" | "untreated" | "children" | "adults";
 
@@ -723,8 +750,11 @@ export function PatientCard({
   const [patient, setPatient] = useState(initialPatient);
   const [isEditing, setIsEditing] = useState(true); // Start in edit mode
   const [isEditingTeeth, setIsEditingTeeth] = useState(false);
-  const [teeth, setTeeth] = useState(patient.teeth);
-  const [paymentAmount, setPaymentAmount] = useState("");
+  const [teeth, setTeeth] = useState<ToothStatus[]>(
+    normalizeTeeth(initialPatient.teeth || [])
+  );
+  const [paymentCashAmount, setPaymentCashAmount] = useState("");
+  const [paymentEwalletAmount, setPaymentEwalletAmount] = useState("");
   const [selectedVisitForPayment, setSelectedVisitForPayment] = useState<
     string | null
   >(null);
@@ -734,6 +764,9 @@ export function PatientCard({
       .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
   );
   const [refreshKey, setRefreshKey] = useState(0);
+  const [visitCostInputs, setVisitCostInputs] = useState<Record<string, string>>(
+    {}
+  );
 
   // Refresh visits and patient data periodically to catch updates from other users
   useEffect(() => {
@@ -745,11 +778,21 @@ export function PatientCard({
       setVisits(updatedVisits);
       
       // Refresh patient data (to get updated balance)
-      const updatedPatient = store.getPatients().find(p => p.id === patient.id);
+      const updatedPatient = store.getPatients().find((p) => p.id === patient.id);
       if (updatedPatient) {
-        // Recalculate balance to ensure it's up to date
-        updatedPatient.balance = store.calculatePatientBalance(patient.id);
-        setPatient(updatedPatient);
+        const recalculatedBalance = store.calculatePatientBalance(patient.id);
+        if (!isEditing && !isEditingTeeth) {
+          setPatient({
+            ...updatedPatient,
+            balance: recalculatedBalance,
+          });
+        } else {
+          // Preserve fields the user is editing while keeping balance accurate
+          setPatient((prev) => ({
+            ...prev,
+            balance: recalculatedBalance,
+          }));
+        }
       }
       
       setRefreshKey(prev => prev + 1);
@@ -777,61 +820,229 @@ export function PatientCard({
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('biyo-data-updated', handleDataUpdate);
     };
-  }, [patient.id]);
+  }, [patient.id, isEditing, isEditingTeeth]);
 
-  // Update patient state when initialPatient changes (but preserve teeth changes if editing)
   useEffect(() => {
-    setPatient(initialPatient);
-    // Only update teeth if not currently editing, otherwise preserve user's changes
-    if (!isEditing && !isEditingTeeth) {
-      setTeeth(initialPatient.teeth || []);
+    setVisitCostInputs((prev) => {
+      const next: Record<string, string> = {};
+      visits.forEach((visit) => {
+        next[visit.id] =
+          prev[visit.id] !== undefined
+            ? prev[visit.id]
+            : formatAmountForInput(visit.cost);
+      });
+      return next;
+    });
+  }, [visits]);
+
+  const getTimestamp = (value?: string) =>
+    value ? new Date(value).getTime() : 0;
+
+  const hasTeethChanges = useMemo(() => {
+    const saved = normalizeTeeth(patient.teeth || []);
+    const current = normalizeTeeth(teeth || []);
+    if (saved.length !== current.length) {
+      return true;
     }
-  }, [initialPatient, isEditing, isEditingTeeth]);
+    return saved.some(
+      (item, index) =>
+        item.toothNumber !== current[index].toothNumber ||
+        item.status !== current[index].status
+    );
+  }, [patient.teeth, teeth]);
+
+  // Keep local patient in sync with incoming props but avoid overwriting newer local edits
+  useEffect(() => {
+    if (!initialPatient) return;
+
+    setPatient((prev) => {
+      if (!prev || prev.id !== initialPatient.id) {
+        setTeeth(normalizeTeeth(initialPatient.teeth || []));
+        return initialPatient;
+      }
+
+      const incomingUpdatedAt = getTimestamp(initialPatient.updatedAt);
+      const currentUpdatedAt = getTimestamp(prev.updatedAt);
+
+      if (incomingUpdatedAt > currentUpdatedAt) {
+        setTeeth(normalizeTeeth(initialPatient.teeth || []));
+        return initialPatient;
+      }
+
+      return prev;
+    });
+  }, [initialPatient]);
+
+  // When we exit edit modes, sync editable teeth state with the latest saved data
+  useEffect(() => {
+    if (!isEditing && !isEditingTeeth) {
+      setTeeth(normalizeTeeth(patient.teeth || []));
+    }
+  }, [isEditing, isEditingTeeth, patient.teeth]);
 
   const handleSavePatient = async () => {
-    const updatedPatient = { ...patient, teeth };
-    await store.savePatient(updatedPatient);
-    setPatient(updatedPatient);
-    setIsEditing(false);
-    setIsEditingTeeth(false);
-    toast.success("Данные пациента обновлены");
+    const normalizedTeeth = normalizeTeeth(teeth);
+    const payload: Patient = { ...patient, teeth: normalizedTeeth };
+
+    try {
+      await store.savePatient(payload);
+
+      const refreshed = store
+        .getPatients()
+        .find((p) => p.id === patient.id);
+
+      if (refreshed) {
+        setPatient(refreshed);
+        setTeeth(normalizeTeeth(refreshed.teeth || []));
+      } else {
+        setPatient(payload);
+        setTeeth(normalizedTeeth);
+      }
+
+      setIsEditing(false);
+      setIsEditingTeeth(false);
+      toast.success("Данные пациента обновлены");
+    } catch (error) {
+      console.error("Failed to save patient", error);
+      toast.error("Не удалось сохранить данные пациента");
+    }
   };
 
   const handleCancelEdit = () => {
     setPatient(initialPatient);
-    setTeeth(initialPatient.teeth);
+    setTeeth(normalizeTeeth(initialPatient.teeth || []));
     setIsEditing(false);
     setIsEditingTeeth(false);
   };
 
   const handleSaveTeeth = async () => {
-    const updatedPatient = { ...patient, teeth };
-    await store.savePatient(updatedPatient);
-    setPatient(updatedPatient);
-    setIsEditingTeeth(false);
-    toast.success("Зубная карта обновлена");
+    if (!hasTeethChanges) {
+      setIsEditingTeeth(false);
+      toast.info("Изменений в зубной карте нет");
+      return;
+    }
+
+    const normalizedTeeth = normalizeTeeth(teeth);
+    const payload: Patient = { ...patient, teeth: normalizedTeeth };
+
+    try {
+      await store.savePatient(payload);
+
+      const refreshed = store
+        .getPatients()
+        .find((p) => p.id === patient.id);
+
+      if (refreshed) {
+        setPatient(refreshed);
+        setTeeth(normalizeTeeth(refreshed.teeth || []));
+      } else {
+        setPatient(payload);
+        setTeeth(normalizedTeeth);
+      }
+
+      setIsEditingTeeth(false);
+      toast.success("Зубная карта обновлена");
+    } catch (error) {
+      console.error("Failed to save teeth changes", error);
+      toast.error("Не удалось сохранить зубную карту");
+    }
   };
 
   const handleAddPayment = async (visitId: string) => {
-    const amount = parseFloat(paymentAmount);
-    if (!amount || amount <= 0) {
+    const cashAmount = parseAmountInput(paymentCashAmount);
+    const ewalletAmount = parseAmountInput(paymentEwalletAmount);
+
+    if (cashAmount === null || ewalletAmount === null) {
       toast.error("Введите корректную сумму");
       return;
     }
 
-    await store.addPayment(visitId, amount);
-    toast.success("Платеж добавлен");
-    
-    // Update patient balance
-    const updatedPatient = store.getPatients().find(p => p.id === patient.id);
+    if ((cashAmount ?? 0) <= 0 && (ewalletAmount ?? 0) <= 0) {
+      toast.error("Укажите сумму для оплаты");
+      return;
+    }
+
+    try {
+      if (cashAmount && cashAmount > 0) {
+        await store.addPayment(visitId, cashAmount, "cash");
+      }
+      if (ewalletAmount && ewalletAmount > 0) {
+        await store.addPayment(visitId, ewalletAmount, "ewallet");
+      }
+      toast.success("Платеж добавлен");
+    } catch (error) {
+      console.error("Failed to add payment", error);
+      toast.error("Не удалось добавить платеж");
+      return;
+    }
+
+    const updatedVisits = store
+      .getVisits()
+      .filter((v) => v.patientId === patient.id)
+      .sort(
+        (a, b) =>
+          new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+      );
+    setVisits(updatedVisits);
+
+    const updatedPatient = store.getPatients().find((p) => p.id === patient.id);
     if (updatedPatient) {
       updatedPatient.balance = store.calculatePatientBalance(patient.id);
       await store.savePatient(updatedPatient);
       setPatient(updatedPatient);
     }
-    
-    setPaymentAmount("");
+
+    setPaymentCashAmount("");
+    setPaymentEwalletAmount("");
     setSelectedVisitForPayment(null);
+    setRefreshKey((prev) => prev + 1);
+  };
+
+  const handleSaveVisitCost = async (visitId: string) => {
+    const inputValue = visitCostInputs[visitId] ?? "";
+    const parsedCost = parseAmountInput(inputValue, false);
+
+    if (parsedCost === null || parsedCost < 0) {
+      toast.error("Введите корректную стоимость");
+      return;
+    }
+
+    const visit = visits.find((v) => v.id === visitId);
+    if (!visit) {
+      toast.error("Визит не найден");
+      return;
+    }
+
+    const updatedVisit = { ...visit, cost: parsedCost };
+
+    try {
+      await store.saveVisit(updatedVisit);
+      const updatedVisits = store
+        .getVisits()
+        .filter((v) => v.patientId === patient.id)
+        .sort(
+          (a, b) =>
+            new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+        );
+      setVisits(updatedVisits);
+
+      const updatedPatient = store.getPatients().find((p) => p.id === patient.id);
+      if (updatedPatient) {
+        updatedPatient.balance = store.calculatePatientBalance(patient.id);
+        await store.savePatient(updatedPatient);
+        setPatient(updatedPatient);
+      }
+
+      setVisitCostInputs((prev) => ({
+        ...prev,
+        [visitId]: formatAmountForInput(parsedCost),
+      }));
+      setRefreshKey((prev) => prev + 1);
+      toast.success("Стоимость визита обновлена");
+    } catch (error) {
+      console.error("Failed to save visit cost", error);
+      toast.error("Не удалось сохранить стоимость визита");
+    }
   };
 
   // Calculate summary data from current visits (will update when visits refresh)
@@ -980,6 +1191,42 @@ export function PatientCard({
               onToothChange={setTeeth}
               readonly={!isEditing && !isEditingTeeth}
             />
+            {!isEditing && (
+              <div className="mt-4 flex justify-end gap-2">
+                {isEditingTeeth ? (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setTeeth(normalizeTeeth(patient.teeth || []));
+                        setIsEditingTeeth(false);
+                      }}
+                    >
+                      Отмена
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleSaveTeeth}
+                      disabled={!hasTeethChanges}
+                    >
+                      Сохранить изменения
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setTeeth(normalizeTeeth(patient.teeth || []));
+                      setIsEditingTeeth(true);
+                    }}
+                  >
+                    Редактировать зубную карту
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Visit History */}
@@ -994,32 +1241,132 @@ export function PatientCard({
                     .getDoctors()
                     .find((d) => d.id === visit.doctorId);
                   
-                  // Handle services - both legacy (string[]) and new (VisitService[]) formats
-                  let serviceList: string[] = [];
-                  if (Array.isArray(visit.services) && visit.services.length > 0) {
-                    if (typeof visit.services[0] === 'string') {
-                      serviceList = (visit.services as string[]).map(id => {
+                  const paymentList = visit.payments || [];
+                  const cashPaidForVisit = paymentList
+                    .filter((p) => p.method === "cash")
+                    .reduce((sum, p) => sum + p.amount, 0);
+                  const ewalletPaidForVisit = paymentList
+                    .filter((p) => p.method === "ewallet")
+                    .reduce((sum, p) => sum + p.amount, 0);
+                  const unspecifiedPaidForVisit = paymentList
+                    .filter((p) => !p.method)
+                    .reduce((sum, p) => sum + p.amount, 0);
+                  const totalPaidForVisit =
+                    cashPaidForVisit + ewalletPaidForVisit + unspecifiedPaidForVisit;
+                  const remainingBalance = visit.cost - totalPaidForVisit;
+                  const costInputValue =
+                    visitCostInputs[visit.id] ?? formatAmountForInput(visit.cost);
+                  const parsedCostInput = parseAmountInput(costInputValue, false);
+                  const costHasChanged =
+                    parsedCostInput !== null &&
+                    parseFloat(visit.cost.toFixed(2)) !== parsedCostInput;
+                  const activeCashInput =
+                    selectedVisitForPayment === visit.id ? paymentCashAmount : "";
+                  const activeEwalletInput =
+                    selectedVisitForPayment === visit.id ? paymentEwalletAmount : "";
+                  const parsedCashInput =
+                    selectedVisitForPayment === visit.id
+                      ? parseAmountInput(activeCashInput)
+                      : 0;
+                  const parsedEwalletInput =
+                    selectedVisitForPayment === visit.id
+                      ? parseAmountInput(activeEwalletInput)
+                      : 0;
+                  const paymentInputsInvalid =
+                    selectedVisitForPayment === visit.id &&
+                    (parsedCashInput === null || parsedEwalletInput === null);
+                  const cashInputAmount =
+                    typeof parsedCashInput === "number" ? parsedCashInput : 0;
+                  const ewalletInputAmount =
+                    typeof parsedEwalletInput === "number" ? parsedEwalletInput : 0;
+                  const paymentPreviewTotal =
+                    (cashInputAmount > 0 ? cashInputAmount : 0) +
+                    (ewalletInputAmount > 0 ? ewalletInputAmount : 0);
+                  const isAddPaymentDisabled =
+                    paymentInputsInvalid ||
+                    selectedVisitForPayment !== visit.id ||
+                    paymentPreviewTotal <= 0;
+                  const fallbackTeeth =
+                    visit.treatedTeeth && visit.treatedTeeth.length > 0
+                      ? [...visit.treatedTeeth].sort((a, b) => a - b)
+                      : undefined;
+                  const renderedServices = (() => {
+                    if (!Array.isArray(visit.services) || visit.services.length === 0) {
+                      return [];
+                    }
+                    if (typeof visit.services[0] === "string") {
+                      return (visit.services as string[]).map((id, idx) => {
                         const service = services.find((s) => s.id === id);
-                        return service?.name || id;
-                      });
-                    } else {
-                      serviceList = (visit.services as VisitService[]).map((vs) => {
-                        const service = services.find((s) => s.id === vs.serviceId);
-                        const name = service?.name || vs.serviceId;
-                        return vs.quantity > 1 ? `${name} (x${vs.quantity})` : name;
+                        return {
+                          key: `${id}-${idx}`,
+                          name: service?.name || id,
+                          quantity: 1,
+                          teeth: fallbackTeeth,
+                        };
                       });
                     }
+                    return (visit.services as VisitService[]).map((vs, idx) => {
+                      const service = services.find((s) => s.id === vs.serviceId);
+                      const teethList =
+                        vs.teeth && vs.teeth.length > 0
+                          ? [...vs.teeth].sort((a, b) => a - b)
+                          : fallbackTeeth;
+                      return {
+                        key: `${vs.serviceId}-${idx}`,
+                        name: service?.name || vs.serviceId,
+                        quantity: vs.quantity || 1,
+                        teeth: teethList,
+                      };
+                    });
+                  })();
+                  let computedStatus = visit.status;
+                  const now = new Date();
+                  const visitEndTime = parseISO(visit.endTime);
+                  if (computedStatus === "scheduled" && visitEndTime < now) {
+                    computedStatus = "completed";
                   }
-                  
-                  const totalPaidForVisit =
-                    visit.payments?.reduce((sum, p) => sum + p.amount, 0) || 0;
-                  const remainingBalance = visit.cost - totalPaidForVisit;
+
+                  const statusLabel =
+                    computedStatus === "scheduled"
+                      ? "Запланирован"
+                      : computedStatus === "completed"
+                        ? "Завершен"
+                        : "Отменен";
+                  const statusVariant =
+                    computedStatus === "completed"
+                      ? "secondary"
+                      : computedStatus === "cancelled"
+                        ? "outline"
+                        : "default";
+                  const infoCards = [
+                    {
+                      label: "Стоимость визита",
+                      value: `${visit.cost.toFixed(2)} смн`,
+                      emphasize: false,
+                    },
+                    {
+                      label: "Оплачено",
+                      value: `${totalPaidForVisit.toFixed(2)} смн`,
+                      emphasize: false,
+                    },
+                    {
+                      label:
+                        remainingBalance > 0
+                          ? "Остаток к оплате"
+                          : "Оплачено полностью",
+                      value:
+                        remainingBalance > 0
+                          ? `${remainingBalance.toFixed(2)} смн`
+                          : "0 смн",
+                      emphasize: remainingBalance > 0,
+                    },
+                  ];
 
                   return (
-                    <Card key={visit.id} className="p-4">
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex-1">
-                          <p className="font-medium text-lg mb-1">
+                    <Card key={visit.id} className="p-4 space-y-4">
+                      <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-lg font-semibold">
                             {format(new Date(visit.startTime), "dd.MM.yyyy HH:mm", {
                               locale: ru,
                             })}
@@ -1027,154 +1374,245 @@ export function PatientCard({
                           <p className="text-sm text-muted-foreground">
                             Врач: {doctor?.name || "Не указан"}
                           </p>
-                          <p className="text-sm text-muted-foreground">
-                            Статус:{" "}
-                            {visit.status === "scheduled"
-                              ? "Запланирован"
-                              : visit.status === "completed"
-                                ? "Завершен"
-                                : "Отменен"}
-                          </p>
                         </div>
-                        <div className="text-right">
-                          <p className="font-medium text-lg">{visit.cost.toFixed(2)} смн</p>
-                          <p className="text-sm text-muted-foreground">
-                            Оплачено: {totalPaidForVisit.toFixed(2)} смн
-                          </p>
-                          {remainingBalance > 0 && (
-                            <p className="text-sm text-orange-500 font-medium">
-                              Остаток: {remainingBalance.toFixed(2)} смн
-                            </p>
-                          )}
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant={statusVariant}
+                            className="text-xs font-semibold uppercase"
+                          >
+                            {statusLabel}
+                          </Badge>
                         </div>
                       </div>
 
-                      {/* Services */}
-                      {serviceList.length > 0 && (
-                        <div className="mb-3">
-                          <Label className="text-sm font-medium mb-1 block">Выполненные услуги:</Label>
-                          <div className="space-y-2">
-                            {Array.isArray(visit.services) && visit.services.length > 0 && typeof visit.services[0] !== 'string' ? (
-                              // New format with VisitService[]
-                              (visit.services as VisitService[]).map((vs, idx) => {
-                                const service = services.find((s) => s.id === vs.serviceId);
-                                const serviceName = service?.name || vs.serviceId;
-                                const serviceTeeth = vs.teeth && vs.teeth.length > 0 ? vs.teeth.sort((a, b) => a - b) : null;
-                                
-                                // Build display name with quantity and teeth
-                                let displayName = vs.quantity > 1 ? `${serviceName} (x${vs.quantity})` : serviceName;
-                                if (serviceTeeth) {
-                                  displayName += ` - зубы: ${serviceTeeth.join(", ")}`;
-                                }
-                                
-                                return (
-                                  <div key={idx} className="flex items-start gap-2">
-                                    <span className="px-2 py-1 bg-secondary text-sm rounded flex-1">
-                                      {displayName}
-                                    </span>
-                                  </div>
-                                );
-                              })
-                            ) : (
-                              // Legacy format - show services with treated teeth from visit level
-                              serviceList.map((serviceName, idx) => {
-                                // Show treated teeth for all services, not just the first one
-                                const treatedTeeth = visit.treatedTeeth && visit.treatedTeeth.length > 0 
-                                  ? visit.treatedTeeth.sort((a, b) => a - b) 
-                                  : null;
-                                const displayName = treatedTeeth 
-                                  ? `${serviceName} - зубы: ${treatedTeeth.join(", ")}`
-                                  : serviceName;
-                                
-                                return (
-                                  <div key={idx} className="flex items-start gap-2">
-                                    <span className="px-2 py-1 bg-secondary text-sm rounded flex-1">
-                                      {displayName}
-                                    </span>
-                                  </div>
-                                );
-                              })
-                            )}
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        {infoCards.map((card) => (
+                          <div
+                            key={card.label}
+                            className="rounded-lg border bg-muted/30 p-3"
+                          >
+                            <p className="text-xs font-medium uppercase text-muted-foreground">
+                              {card.label}
+                            </p>
+                            <p
+                              className={`mt-1 text-lg font-semibold ${
+                                card.emphasize ? "text-orange-500" : ""
+                              }`}
+                            >
+                              {card.value}
+                            </p>
                           </div>
-                        </div>
-                      )}
+                        ))}
+                      </div>
 
-                      {/* Treated Teeth */}
-                      {visit.treatedTeeth && visit.treatedTeeth.length > 0 && (
-                        <div className="mb-3">
-                          <Label className="text-sm font-medium mb-1 block">Проведено лечение зубов:</Label>
-                          <div className="flex flex-wrap gap-1">
-                            {visit.treatedTeeth.sort((a, b) => a - b).map((toothNum) => (
-                              <span
-                                key={toothNum}
-                                className="px-2 py-1 bg-blue-500/20 text-blue-500 text-sm rounded font-medium"
+                      <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <Label className="text-sm font-medium">
+                            Услуги и зубы
+                          </Label>
+                          {renderedServices.length > 0 && (
+                            <Badge variant="outline" className="text-xs">
+                              {renderedServices.length}
+                            </Badge>
+                          )}
+                        </div>
+                        {renderedServices.length > 0 ? (
+                          <div className="grid gap-2">
+                            {renderedServices.map((service) => (
+                              <div
+                                key={service.key}
+                                className="rounded-md border border-border/60 bg-background/80 p-3"
                               >
-                                {toothNum}
-                              </span>
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-sm font-medium leading-tight">
+                                    {service.name}
+                                  </span>
+                                  {service.quantity > 1 && (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-xs font-semibold"
+                                    >
+                                      ×{service.quantity}
+                                    </Badge>
+                                  )}
+                                </div>
+                                {service.teeth && service.teeth.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {service.teeth.map((tooth) => (
+                                      <Badge
+                                        key={`${service.key}-tooth-${tooth}`}
+                                        variant="outline"
+                                        className="font-mono text-xs"
+                                      >
+                                        {tooth}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             ))}
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Услуги не указаны.
+                          </p>
+                        )}
+                      </div>
 
-                      {/* Notes */}
                       {visit.notes && (
-                        <div className="mb-3">
-                          <Label className="text-sm font-medium mb-1 block">Заметки:</Label>
-                          <p className="text-sm text-muted-foreground">{visit.notes}</p>
+                        <div className="rounded-lg border bg-muted/20 p-3">
+                          <Label className="text-xs font-medium uppercase text-muted-foreground">
+                            Заметки
+                          </Label>
+                          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                            {visit.notes}
+                          </p>
                         </div>
                       )}
 
-                      {/* Payment Section */}
-                      <div className="mt-4 pt-4 border-t">
-                        <div className="flex items-center justify-between mb-3">
-                          <Label className="text-sm font-medium">Оплата</Label>
+                      <div className="rounded-lg border bg-muted/20 p-3">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <Label className="text-sm font-medium">
+                            Стоимость визита
+                          </Label>
+                          {costHasChanged && (
+                            <Badge variant="outline" className="text-xs">
+                              Требуется сохранение
+                            </Badge>
+                          )}
                         </div>
-                        <div className="flex gap-2">
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
                           <Input
                             type="number"
                             step="0.01"
-                            placeholder="Сумма платежа"
-                            value={
-                              selectedVisitForPayment === visit.id
-                                ? paymentAmount
-                                : ""
+                            min="0"
+                            value={costInputValue}
+                            onChange={(e) =>
+                              setVisitCostInputs((prev) => ({
+                                ...prev,
+                                [visit.id]: e.target.value,
+                              }))
                             }
-                            onChange={(e) => {
-                              setPaymentAmount(e.target.value);
-                              setSelectedVisitForPayment(visit.id);
-                            }}
                             className="flex-1"
+                            placeholder="Введите стоимость визита"
                           />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSaveVisitCost(visit.id)}
+                            disabled={
+                              parsedCostInput === null ||
+                              parsedCostInput < 0 ||
+                              !costHasChanged
+                            }
+                          >
+                            Сохранить стоимость
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="rounded-lg border bg-muted/20 p-3">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-sm font-medium">Оплата</Label>
+                        </div>
+                        <div className="mt-3 space-y-3">
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="space-y-1.5">
+                              <Label className="text-xs text-muted-foreground">
+                                Наличные
+                              </Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={
+                                  selectedVisitForPayment === visit.id
+                                    ? paymentCashAmount
+                                    : ""
+                                }
+                                onChange={(e) => {
+                                  setPaymentCashAmount(e.target.value);
+                                  setSelectedVisitForPayment(visit.id);
+                                }}
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label className="text-xs text-muted-foreground">
+                                Электронный кошелёк
+                              </Label>
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                placeholder="0.00"
+                                value={
+                                  selectedVisitForPayment === visit.id
+                                    ? paymentEwalletAmount
+                                    : ""
+                                }
+                                onChange={(e) => {
+                                  setPaymentEwalletAmount(e.target.value);
+                                  setSelectedVisitForPayment(visit.id);
+                                }}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
+                            <span className="text-muted-foreground">Итого</span>
+                            <span className="font-medium">
+                              {paymentPreviewTotal.toFixed(2)} смн
+                            </span>
+                          </div>
                           <Button
                             size="sm"
                             onClick={async () => {
                               await handleAddPayment(visit.id);
-                              // Refresh visits and patient data to update balance
-                              const updatedVisits = store.getVisits()
-                                .filter((v) => v.patientId === patient.id)
-                                .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-                              setVisits(updatedVisits);
-                              const updatedPatient = store.getPatients().find(p => p.id === patient.id);
-                              if (updatedPatient) {
-                                updatedPatient.balance = store.calculatePatientBalance(patient.id);
-                                setPatient(updatedPatient);
-                              }
-                              setRefreshKey(prev => prev + 1);
                             }}
-                            disabled={!paymentAmount || selectedVisitForPayment !== visit.id}
+                            disabled={isAddPaymentDisabled}
                           >
                             Добавить платеж
                           </Button>
                         </div>
                         {visit.payments && visit.payments.length > 0 && (
-                          <div className="mt-3 space-y-1">
-                            <Label className="text-xs text-muted-foreground">История платежей:</Label>
-                            {visit.payments.map((payment) => (
-                              <p key={payment.id} className="text-xs text-muted-foreground pl-2">
-                                {format(new Date(payment.date), "dd.MM.yyyy")}:{" "}
-                                {payment.amount.toFixed(2)} смн
-                              </p>
-                            ))}
+                          <div className="mt-3 space-y-2">
+                            <Label className="text-xs text-muted-foreground">
+                              История платежей
+                            </Label>
+                            <div className="space-y-1.5">
+                              {visit.payments.map((payment) => {
+                                const methodLabel =
+                                  payment.method === "cash"
+                                    ? "Наличные"
+                                    : payment.method === "ewallet"
+                                      ? "Электронный кошелёк"
+                                      : "Без категории";
+                                const methodVariant =
+                                  payment.method === "cash"
+                                    ? "secondary"
+                                    : payment.method === "ewallet"
+                                      ? "outline"
+                                      : "default";
+                                return (
+                                  <div
+                                    key={payment.id}
+                                    className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background/80 px-3 py-2"
+                                  >
+                                    <div>
+                                      <p className="text-sm font-medium">
+                                        {payment.amount.toFixed(2)} смн
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {format(new Date(payment.date), "dd.MM.yyyy")}
+                                      </p>
+                                    </div>
+                                    <Badge variant={methodVariant} className="text-xs">
+                                      {methodLabel}
+                                    </Badge>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
                         )}
                       </div>

@@ -11,8 +11,40 @@ const getApiClient = async () => {
 // Enable API sync (set to true to enable backend sync)
 // Default to true for full cross-device sync (works in both dev and prod)
 // Set VITE_ENABLE_API_SYNC=false to disable
-const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC !== 'false';
+const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC === 'true';
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://biyo-dash-insight.vercel.app/api';
+type ApiClientInstance = Awaited<ReturnType<typeof getApiClient>>;
+const MAX_API_SYNC_FAILURES = 3;
+let apiSyncEnabled = ENABLE_API_SYNC;
+let apiSyncFailureCount = 0;
+let apiSyncDisabledNotified = false;
+
+const runApiSync = async (
+  handler: (client: ApiClientInstance) => Promise<void>,
+  context: string
+) => {
+  if (!apiSyncEnabled) return;
+
+  try {
+    const client = await getApiClient();
+    await handler(client);
+    apiSyncFailureCount = 0;
+  } catch (error) {
+    apiSyncFailureCount += 1;
+    if (apiSyncFailureCount >= MAX_API_SYNC_FAILURES) {
+      apiSyncEnabled = false;
+      if (!apiSyncDisabledNotified && import.meta.env.DEV) {
+        console.warn(
+          `[API sync] Disabled after repeated failures. Latest error (${context}):`,
+          error
+        );
+        apiSyncDisabledNotified = true;
+      }
+    } else if (import.meta.env.DEV && !apiSyncDisabledNotified) {
+      console.warn(`[API sync] Failed (${context}). Retrying silently...`, error);
+    }
+  }
+};
 
 export interface ToothStatus {
   toothNumber: number;
@@ -59,6 +91,7 @@ export interface Payment {
   visitId: string;
   amount: number;
   date: string;
+  method?: "cash" | "ewallet";
 }
 
 export interface VisitService {
@@ -81,6 +114,8 @@ export interface Visit {
   treatedTeeth?: number[]; // Teeth numbers that were treated/cured during this visit
   clinicId: string; // Clinic this visit belongs to
   createdAt: string;
+  cashAmount?: number;
+  ewalletAmount?: number;
 }
 
 export interface PatientFile {
@@ -221,9 +256,7 @@ class Store {
     window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'patients' } }));
     
     // Sync to API in background (don't wait for it)
-    if (ENABLE_API_SYNC) {
-      getApiClient().then(client => client.savePatient(patient)).catch(err => console.error('API sync failed:', err));
-    }
+    runApiSync((client) => client.savePatient(patient), 'savePatient');
   }
 
   deletePatient(patientId: string): void {
@@ -275,9 +308,7 @@ class Store {
     window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'doctors' } }));
     
     // Sync to API in background
-    if (ENABLE_API_SYNC) {
-      getApiClient().then(client => client.saveDoctor(doctor)).catch(err => console.error('API sync failed:', err));
-    }
+    runApiSync((client) => client.saveDoctor(doctor), 'saveDoctor');
   }
 
   deleteDoctor(doctorId: string): void {
@@ -322,9 +353,7 @@ class Store {
     window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'services' } }));
     
     // Sync to API in background
-    if (ENABLE_API_SYNC) {
-      getApiClient().then(client => client.saveService(service)).catch(err => console.error('API sync failed:', err));
-    }
+    runApiSync((client) => client.saveService(service), 'saveService');
   }
 
   deleteService(serviceId: string): void {
@@ -372,9 +401,7 @@ class Store {
     window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'visits' } }));
     
     // Sync to API in background
-    if (ENABLE_API_SYNC) {
-      getApiClient().then(client => client.saveVisit(visit)).catch(err => console.error('API sync failed:', err));
-    }
+    runApiSync((client) => client.saveVisit(visit), 'saveVisit');
   }
 
   deleteVisit(visitId: string): void {
@@ -387,7 +414,7 @@ class Store {
   }
 
   // Payments
-  async addPayment(visitId: string, amount: number): Promise<Payment> {
+  async addPayment(visitId: string, amount: number, method: "cash" | "ewallet"): Promise<Payment> {
     const clinicId = this.getCurrentClinicId();
     if (!clinicId) {
       throw new Error("No clinic ID available. Please log in.");
@@ -399,25 +426,41 @@ class Store {
       throw new Error("Visit not found");
     }
 
+    if (amount <= 0 || !Number.isFinite(amount)) {
+      throw new Error("Payment amount must be greater than zero");
+    }
+
+    const normalizedAmount = parseFloat(Number(amount).toFixed(2));
+
     const payment: Payment = {
       id: `payment_${Date.now()}_${Math.random()}`,
       visitId,
-      amount,
+      amount: normalizedAmount,
       date: new Date().toISOString(),
+      method,
     };
 
     visit.payments = [...(visit.payments || []), payment];
+    const cashTotal = visit.payments
+      .filter((p) => p.method === "cash")
+      .reduce((sum, p) => sum + p.amount, 0);
+    const walletTotal = visit.payments
+      .filter((p) => p.method === "ewallet")
+      .reduce((sum, p) => sum + p.amount, 0);
+    visit.cashAmount = parseFloat(cashTotal.toFixed(2));
+    visit.ewalletAmount = parseFloat(walletTotal.toFixed(2));
     saveToStorage(STORAGE_KEYS.VISITS, allVisits);
     
     // Sync to API in background
-    if (ENABLE_API_SYNC) {
-      getApiClient().then(client => client.addPayment(visitId, amount)).catch(err => console.error('API sync failed:', err));
-    }
+    runApiSync(
+      (client) => client.addPayment(visitId, normalizedAmount, method, payment.date),
+      'addPayment'
+    );
 
     // Update patient balance
     const patient = this.getPatients().find((p) => p.id === visit.patientId);
     if (patient) {
-      patient.balance = Math.max(0, patient.balance - amount);
+      patient.balance = this.calculatePatientBalance(patient.id);
       this.savePatient(patient);
     }
 
@@ -452,9 +495,7 @@ class Store {
     window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'files' } }));
     
     // Sync to API in background
-    if (ENABLE_API_SYNC) {
-      getApiClient().then(client => client.saveFile(file)).catch(err => console.error('API sync failed:', err));
-    }
+    runApiSync((client) => client.saveFile(file), 'saveFile');
   }
 
   deleteFile(fileId: string): void {
@@ -862,13 +903,8 @@ class Store {
   async saveUser(user: User, options?: { skipApi?: boolean }): Promise<void> {
     this.upsertUsersLocally(user);
 
-    if (ENABLE_API_SYNC && !options?.skipApi) {
-      try {
-        const client = await getApiClient();
-        await client.saveUser(user);
-      } catch (error) {
-        console.error('API sync failed:', error);
-      }
+    if (!options?.skipApi) {
+      runApiSync((client) => client.saveUser(user), 'saveUser');
     }
   }
 
@@ -887,13 +923,8 @@ class Store {
   async saveClinic(clinic: Clinic, options?: { skipApi?: boolean }): Promise<void> {
     this.upsertClinicsLocally(clinic);
 
-    if (ENABLE_API_SYNC && !options?.skipApi) {
-      try {
-        const client = await getApiClient();
-        await client.saveClinic(clinic);
-      } catch (error) {
-        console.error('API sync failed:', error);
-      }
+    if (!options?.skipApi) {
+      runApiSync((client) => client.saveClinic(clinic), 'saveClinic');
     }
   }
 
