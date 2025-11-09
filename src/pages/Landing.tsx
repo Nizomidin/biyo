@@ -71,7 +71,7 @@ const solutionPoints = [
 
 const Landing = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-emerald-100 via-emerald-50 to-emerald-100 text-slate-900">
+    <div className="min-h-screen bg-gradient-to-b from-emerald-100 via-white to-amber-50 text-slate-900">
       <header className="sticky top-0 z-50 border-b border-blue-100 bg-white/90 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
