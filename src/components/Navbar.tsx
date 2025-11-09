@@ -46,8 +46,8 @@ export function Navbar() {
   return (
     <header className="bg-card border-b border-border py-4 px-6">
       <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-8">
-        <div className="flex items-center gap-8">
-          <Link to="/" className="flex items-center gap-4">
+        <div className="flex items-center gap-8 flex-1">
+          <Link to="/" className="flex items-center gap-4 mr-auto">
             <span className="text-2xl font-semibold tracking-wide text-primary">
               Serkor
             </span>
