@@ -3,7 +3,14 @@ import App from "./App.tsx";
 import "./index.css";
 
 // Apply base body styles before React mounts
-document.body.style.backgroundColor = "#ffffff";
+const savedTheme = localStorage.getItem("biyo-theme");
+if (savedTheme === "dark") {
+  document.body.classList.add("theme-dark");
+  document.body.style.backgroundColor = "#111827";
+} else {
+  document.body.classList.remove("theme-dark");
+  document.body.style.backgroundColor = "#ffffff";
+}
 document.body.style.margin = "0";
 document.body.style.padding = "0";
 

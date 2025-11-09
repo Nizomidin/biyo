@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { store } from "@/lib/store";
-import { LogOut, User } from "lucide-react";
+import { Moon, Sun, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Calendar, Users, TrendingUp } from "lucide-react";
@@ -26,6 +26,17 @@ export function Navbar() {
 
   const isActive = (path: string) => location.pathname === path;
 
+  const toggleTheme = () => {
+    const isDark = document.body.classList.toggle("theme-dark");
+    if (isDark) {
+      localStorage.setItem("biyo-theme", "dark");
+      document.body.style.backgroundColor = "#111827";
+    } else {
+      localStorage.setItem("biyo-theme", "light");
+      document.body.style.backgroundColor = "#ffffff";
+    }
+  };
+
   const handleLogout = () => {
     store.logout();
     toast.success("Выход выполнен");
@@ -35,18 +46,18 @@ export function Navbar() {
   return (
     <header className="bg-card border-b border-border py-4 px-6">
       <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-8">
-        <div className="flex items-center gap-6">
-          <Link to="/" className="flex items-center gap-3">
-            <span className="text-lg font-semibold tracking-wide text-primary">
+        <div className="flex items-center gap-8">
+          <Link to="/" className="flex items-center gap-4">
+            <span className="text-2xl font-semibold tracking-wide text-primary">
               Serkor
             </span>
             <img
               src="/ser.png"
               alt="Serkor logo"
-              className="h-10 w-10 rounded-full border border-border object-cover"
+              className="h-14 w-14 rounded-full border border-border object-cover"
             />
             <div className="flex flex-col">
-              <span className="text-sm font-semibold leading-none">
+              <span className="text-base font-semibold leading-none">
                 {clinic?.name || "Ваша клиника"}
               </span>
               <span className="text-xs text-muted-foreground leading-none">
@@ -54,11 +65,17 @@ export function Navbar() {
               </span>
             </div>
           </Link>
-          <Link to="/profile">
-            <Button variant="ghost" size="icon" className="h-9 w-9">
-              <User className="h-5 w-5" />
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={toggleTheme} className="h-9 w-9">
+              <Sun className="h-5 w-5 hidden theme-dark:block" />
+              <Moon className="h-5 w-5 theme-dark:hidden" />
             </Button>
-          </Link>
+            <Link to="/profile">
+              <Button variant="ghost" size="icon" className="h-9 w-9">
+                <User className="h-5 w-5" />
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <nav className="flex items-center gap-2 absolute left-1/2 -translate-x-1/2">
