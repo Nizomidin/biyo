@@ -46,7 +46,7 @@ const Profile = () => {
     return <div className="min-h-screen bg-background flex items-center justify-center">Загрузка...</div>;
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!email.trim()) {
       toast.error("Email не может быть пустым");
       return;
@@ -60,12 +60,20 @@ const Profile = () => {
     setIsLoading(true);
     try {
       // Update clinic name if it changed
-      if (clinic && clinic.name !== clinicName.trim()) {
-        const updatedClinic = {
-          ...clinic,
-          name: clinicName.trim(),
-        };
-        store.saveClinic(updatedClinic);
+      const trimmedClinicName = clinicName.trim();
+      let updatedClinic = clinic;
+      if (trimmedClinicName) {
+        if (!clinic || clinic.name !== trimmedClinicName) {
+          const clinicToSave = clinic
+            ? { ...clinic, name: trimmedClinicName }
+            : {
+                id: currentUser.clinicId || `clinic_${Date.now()}`,
+                name: trimmedClinicName,
+                createdAt: clinic?.createdAt || new Date().toISOString(),
+              };
+          await store.saveClinic(clinicToSave);
+          updatedClinic = clinicToSave;
+        }
       }
 
       // Update user email, password, and proficiency
@@ -74,8 +82,9 @@ const Profile = () => {
         email: email.trim(),
         proficiency: proficiency.trim() || undefined,
         ...(password && password.trim() !== "" && { password: password.trim() }),
+        ...(updatedClinic ? { clinicId: updatedClinic.id } : {}),
       };
-      store.saveUser(updatedUser);
+      await store.saveUser(updatedUser);
       store.setCurrentUser(updatedUser);
       toast.success("Профиль обновлен");
       setIsEditing(false);
@@ -387,11 +396,7 @@ const Profile = () => {
                 >
                   Отмена
                 </Button>
-                <Button
-                  onClick={handleSave}
-                  disabled={isLoading}
-                  className="flex-1"
-                >
+                <Button onClick={handleSave} disabled={isLoading} className="flex-1">
                   {isLoading ? "Сохранение..." : "Сохранить"}
                 </Button>
               </>

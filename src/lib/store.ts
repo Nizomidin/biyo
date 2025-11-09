@@ -904,7 +904,7 @@ class Store {
     this.upsertUsersLocally(user);
 
     if (!options?.skipApi) {
-      runApiSync((client) => client.saveUser(user), 'saveUser');
+      await runApiSync((client) => client.saveUser(user), 'saveUser');
     }
   }
 
@@ -924,7 +924,7 @@ class Store {
     this.upsertClinicsLocally(clinic);
 
     if (!options?.skipApi) {
-      runApiSync((client) => client.saveClinic(clinic), 'saveClinic');
+      await runApiSync((client) => client.saveClinic(clinic), 'saveClinic');
     }
   }
 
