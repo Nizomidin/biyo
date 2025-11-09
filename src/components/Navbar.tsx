@@ -4,7 +4,6 @@ import { LogOut, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Calendar, Users, TrendingUp } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 export function Navbar() {
   const location = useLocation();
@@ -36,22 +35,27 @@ export function Navbar() {
   return (
     <header className="bg-card border-b border-border py-4 px-6">
       <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-8">
-        <div className="flex items-center gap-8">
-          <Link to="/profile" className="flex items-center gap-2">
+        <div className="flex items-center gap-6">
+          <Link to="/" className="flex items-center gap-3">
+            <img
+              src="/ser.png"
+              alt="Biyo Dash"
+              className="h-10 w-10 rounded-full border border-border object-cover"
+            />
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold leading-none">Biyo Dash</span>
+              {clinic && (
+                <span className="text-xs text-muted-foreground leading-none">
+                  {clinic.name}
+                </span>
+              )}
+            </div>
+          </Link>
+          <Link to="/profile">
             <Button variant="ghost" size="icon" className="h-9 w-9">
               <User className="h-5 w-5" />
             </Button>
           </Link>
-          <div className="flex items-center gap-3">
-            <Avatar className="h-10 w-10 bg-primary">
-              <AvatarFallback className="bg-primary text-primary-foreground font-bold">
-                БИ
-              </AvatarFallback>
-            </Avatar>
-            {clinic && (
-              <span className="text-sm text-muted-foreground">{clinic.name}</span>
-            )}
-          </div>
         </div>
 
         <nav className="flex items-center gap-2 absolute left-1/2 -translate-x-1/2">
