@@ -12,7 +12,7 @@ const getApiClient = async () => {
 // Default to true for full cross-device sync (works in both dev and prod)
 // Set VITE_ENABLE_API_SYNC=false to disable
 const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC === 'true';
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://biyo-dash-insight.vercel.app/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 type ApiClientInstance = Awaited<ReturnType<typeof getApiClient>>;
 const MAX_API_SYNC_FAILURES = 3;
 let apiSyncEnabled = ENABLE_API_SYNC;

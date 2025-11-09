@@ -78,6 +78,25 @@ npm run tauri:build
 
 The desktop build points to the same local data store as the web app and keeps API sync disabled by default so it works fully offline. You can re-enable remote sync by setting `VITE_ENABLE_API_SYNC=true` before running the Tauri commands.
 
+## Backend service (Google Sheets)
+
+The project now ships with an Express server that persists all clinic data in Google Sheets. Provide a service account with access to your spreadsheet and expose the credentials as environment variables:
+
+```sh
+GOOGLE_SHEETS_ID=<spreadsheet id>
+GOOGLE_CLIENT_EMAIL=<service account email>
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+BACKEND_PORT=4000 # optional, defaults to 4000
+```
+
+Start the backend with:
+
+```sh
+npm run server:dev
+```
+
+By default the frontend points to `http://localhost:4000/api`. To target a different backend URL, set `VITE_API_URL` before running `npm run dev`.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/62edfae4-4db9-403b-ad17-5854d5725e0c) and click on Share -> Publish.
