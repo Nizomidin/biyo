@@ -39,7 +39,7 @@ const Profile = () => {
       const currentClinic = store.getClinicById(user.clinicId);
       setClinicName(currentClinic?.name || "");
     }
-  }, [navigate, isEditing]);
+  }, [navigate, isEditing, currentUser?.clinicId]);
 
   if (!currentUser) {
     // Don't render anything if no user - will redirect via useEffect

@@ -37,18 +37,21 @@ export function Navbar() {
       <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-8">
         <div className="flex items-center gap-6">
           <Link to="/" className="flex items-center gap-3">
+            <span className="text-lg font-semibold tracking-wide text-primary">
+              Serkor
+            </span>
             <img
               src="/ser.png"
-              alt="Biyo Dash"
+              alt="Serkor logo"
               className="h-10 w-10 rounded-full border border-border object-cover"
             />
             <div className="flex flex-col">
-              <span className="text-sm font-semibold leading-none">Biyo Dash</span>
-              {clinic && (
-                <span className="text-xs text-muted-foreground leading-none">
-                  {clinic.name}
-                </span>
-              )}
+              <span className="text-sm font-semibold leading-none">
+                {clinic?.name || "Ваша клиника"}
+              </span>
+              <span className="text-xs text-muted-foreground leading-none">
+                Клиника
+              </span>
             </div>
           </Link>
           <Link to="/profile">

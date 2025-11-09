@@ -2,8 +2,8 @@ import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
 
-// Set a visible background immediately to debug blue screen
-document.body.style.backgroundColor = "#0f172a";
+// Apply base body styles before React mounts
+document.body.style.backgroundColor = "#ffffff";
 document.body.style.margin = "0";
 document.body.style.padding = "0";
 
