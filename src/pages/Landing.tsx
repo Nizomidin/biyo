@@ -226,14 +226,11 @@ const Landing = () => {
                   Открыть аккаунт
                 </Button>
               </Link>
-              <Link to="/login">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="border border-white/50 bg-emerald-700/70 px-10 text-lg font-semibold !text-white backdrop-blur-md hover:bg-emerald-700 hover:!text-white focus-visible:!text-white active:!text-white"
-                >
-                  Смотреть демо
-                </Button>
+              <Link
+                to="/login"
+                className="inline-flex items-center justify-center rounded-full border border-white/50 bg-emerald-800/80 px-10 py-3 text-lg font-semibold text-white shadow-lg backdrop-blur transition hover:bg-emerald-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"
+              >
+                Смотреть демо
               </Link>
             </div>
             <div className="flex items-center gap-4 text-base font-semibold text-slate-600">
