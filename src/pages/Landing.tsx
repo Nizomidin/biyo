@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
 const navItems = [
-  { id: "hero", label: "Serkor" },
+  { id: "hero", label: "About us" },
   { id: "problem", label: "Проблема" },
   { id: "solution", label: "Решение" },
   { id: "pricing", label: "Тарифы" },
@@ -19,8 +19,8 @@ const Landing = () => {
               <img src="/ser.png" alt="Serkor" className="h-9 w-9 object-contain" />
             </div>
             <div className="flex flex-col leading-tight">
-              <span className="text-xl font-semibold text-emerald-700">Serkor Dental OS</span>
-              <span className="text-xs uppercase tracking-[0.2em] text-slate-400">Clinic Operating System</span>
+              <span className="text-xl font-semibold text-emerald-700">Serkor Dental</span>
+              <span className="text-xs uppercase tracking-[0.2em] text-slate-400">Операционная система стоматологии</span>
             </div>
           </div>
 
@@ -60,7 +60,7 @@ const Landing = () => {
           </div>
           <div className="max-w-xl space-y-6">
             <span className="inline-flex items-center gap-2 rounded-full border border-emerald-100 bg-white px-4 py-1 text-xs font-medium uppercase tracking-[0.3em] text-emerald-500">
-              Dental CRM
+              🇹🇯 Made in Khujand
             </span>
             <h1 className="text-4xl font-semibold tracking-tight text-slate-900 md:text-5xl">
               Умная платформа для стоматологических клиник
@@ -124,52 +124,80 @@ const Landing = () => {
         </section>
 
         <section id="problem" className="mx-auto max-w-6xl px-6 py-20">
-          <div className="grid gap-16 md:grid-cols-[1.2fr_1fr] md:items-center">
-            <div className="space-y-6">
-              <span className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-500">
-                Проблема сегодня
-              </span>
-              <h2 className="text-3xl font-semibold text-slate-900 md:text-4xl">Что мешает клиникам расти</h2>
-              <p className="text-lg leading-relaxed text-slate-600">
-                Стоматология держится на точности — но хаос в расписании, неявки пациентов и путаница с оплатами
-                сжирают время команды, снижают выручку и портят впечатление пациентов.
-              </p>
-              <div className="space-y-4">
-                {[
-                  "Расписание ведётся в тетрадях и Excel — врачи не синхронизированы, записи теряются.",
-                  "Напоминания пациентам вручную — администраторы весь день в телефоне.",
-                  "Нет понимания по оплатам: что оплачено, где долг, кому выплачивать процент.",
-                  "Отчёты собираются ночью — клиника не видит реальных показателей и точек роста.",
-                ].map((problem) => (
-                  <div key={problem} className="flex gap-3 rounded-2xl bg-white/80 p-4 shadow-sm">
-                    <span className="mt-1 h-2 w-2 flex-none rounded-full bg-emerald-400" />
-                    <p className="text-sm text-slate-600">{problem}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="text-center space-y-4">
+            <span className="text-sm font-semibold uppercase tracking-[0.25em] text-emerald-500">
+              Почему клиники застревают
+            </span>
+            <h2 className="text-3xl font-semibold text-slate-900 md:text-4xl">
+              Главные боли стоматологических центров Худжанда
+            </h2>
+            <p className="mx-auto max-w-3xl text-lg leading-relaxed text-slate-600">
+              Администраторы перегружены звонками, врачи не знают реальную загрузку, пациенты выпадают из цепочки
+              лечения, а цифры по выручке непонятны до конца месяца.
+            </p>
+          </div>
 
-            <div className="relative h-full rounded-[32px] border border-emerald-100 bg-white/80 p-8 shadow-lg backdrop-blur">
-              <div className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-semibold text-emerald-700">Как это выглядит</h3>
-                  <p className="mt-2 text-sm text-slate-500">
-                    Разрозненные таблицы, блокноты и чаты. Пациенты приходят в неудобное время, а врачи простаивают.
-                  </p>
-                </div>
-                <div className="space-y-4 text-sm">
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-emerald-700">
-                    38% звонков администратора — напоминания о визитах
-                  </div>
-                  <div className="rounded-2xl border border-amber-100 bg-amber-50/60 px-4 py-3 text-amber-600">
-                    Потери до 15% выручки из-за несогласованных графиков
-                  </div>
-                  <div className="rounded-2xl border border-sky-100 bg-sky-50/60 px-4 py-3 text-sky-600">
-                    Обновление отчётов занимает 6-8 часов каждую неделю
-                  </div>
+          <div className="mt-14 grid gap-6 md:grid-cols-2">
+            {[
+              {
+                title: "Хаос в расписании",
+                description:
+                  "Записи ведутся в блокнотах и Excel. При переносах теряются пациенты, а кабинеты простаивают по несколько часов.",
+                tone: "emerald",
+              },
+              {
+                title: "Нет контроля оплат",
+                description:
+                  "Касса, наличные и переводы расходятся. Руководитель не видит, кто оплатил лечение, какая сумма в долгах и что начислить врачам.",
+                tone: "sky",
+              },
+              {
+                title: "Команда работает в разрозненных чатах",
+                description:
+                  "Администраторы вручную напоминают о визитах, присылают фото зубных карт и теряют историю общения.",
+                tone: "amber",
+              },
+              {
+                title: "Отчёты собираются вручную",
+                description:
+                  "Чтобы посчитать выручку, нужно объединять таблицы и сверять переписки. Решения принимаются на ощущениях, а не на данных.",
+                tone: "slate",
+              },
+            ].map((item) => (
+              <div
+                key={item.title}
+                className="group relative overflow-hidden rounded-[28px] border border-emerald-100 bg-white/85 p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+              >
+                <div
+                  className={`absolute -top-12 right-[-40px] h-32 w-32 rounded-full opacity-20 blur-3xl transition group-hover:opacity-30 ${
+                    item.tone === "emerald"
+                      ? "bg-emerald-300"
+                      : item.tone === "sky"
+                      ? "bg-sky-300"
+                      : item.tone === "amber"
+                      ? "bg-amber-300"
+                      : "bg-slate-300"
+                  }`}
+                />
+                <div className="relative space-y-3">
+                  <span
+                    className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-semibold text-white ${
+                      item.tone === "emerald"
+                        ? "bg-emerald-500"
+                        : item.tone === "sky"
+                        ? "bg-sky-500"
+                        : item.tone === "amber"
+                        ? "bg-amber-500"
+                        : "bg-slate-500"
+                    }`}
+                  >
+                    {item.title.slice(0, 1)}
+                  </span>
+                  <h3 className="text-xl font-semibold text-slate-900">{item.title}</h3>
+                  <p className="text-sm leading-relaxed text-slate-600">{item.description}</p>
                 </div>
               </div>
-            </div>
+            ))}
           </div>
         </section>
 
