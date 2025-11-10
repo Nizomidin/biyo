@@ -13,6 +13,7 @@ import SignUp from "./pages/SignUp";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import MigrateData from "./pages/MigrateData";
+import Landing from "./pages/Landing";
 import { store } from "./lib/store";
 
 const queryClient = new QueryClient();
@@ -95,7 +96,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   // Redirect to login if not authenticated
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return <>{children}</>;
@@ -132,7 +133,7 @@ const App = () => {
                     </div>
                   </ProtectedRoute>
                 ) : (
-                  <Navigate to="/signup" replace />
+                  <Landing />
                 )
               }
             />
