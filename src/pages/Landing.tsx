@@ -230,7 +230,7 @@ const Landing = () => {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border border-white/60 bg-emerald-700/80 px-10 text-lg font-semibold text-white backdrop-blur hover:bg-emerald-700"
+                  className="border border-white/60 bg-emerald-700/80 px-10 text-lg font-semibold !text-white backdrop-blur hover:bg-emerald-700 hover:!text-white"
                 >
                   Смотреть демо
                 </Button>
