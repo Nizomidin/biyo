@@ -119,7 +119,7 @@ const Landing = () => {
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-indigo-50 text-slate-900">
       <header className="sticky top-0 z-40 border-b border-emerald-100 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="flex w-full items-center justify-between px-8 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-200/60 shadow-sm">
               <img src="/ser.png" alt="Serkor" className="h-full w-full rounded-full object-cover" />
@@ -244,16 +244,16 @@ const Landing = () => {
           </div>
 
           <div className="mt-14 space-y-6">
-            <div className="flex flex-col items-center justify-center gap-3 md:flex-row">
+            <div className="flex flex-col items-center justify-center gap-4 md:flex-row">
               {problemTabs.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => setActiveProblemId(item.id)}
-                  className={`rounded-full px-5 py-2 text-sm font-semibold transition ${
+                  className={`rounded-full px-7 py-3 text-base font-semibold shadow-sm transition ${
                     activeProblemId === item.id
-                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-200/70"
-                      : "bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"
+                      ? "bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white shadow-lg shadow-emerald-200/80"
+                      : "bg-white text-slate-500 ring-1 ring-emerald-100 hover:bg-emerald-50 hover:text-emerald-600"
                   }`}
                 >
                   {item.name}
@@ -283,11 +283,13 @@ const Landing = () => {
                   >
                     {activeProblem.name}
                   </span>
-                  <h3 className="text-3xl font-semibold text-slate-900">{activeProblem.headline}</h3>
-                  <p className="text-base leading-relaxed text-slate-600">{activeProblem.description}</p>
-                  <ul className="space-y-3">
+                  <h3 className="text-3xl font-semibold text-slate-900 md:text-[2.2rem] md:leading-tight">
+                    {activeProblem.headline}
+                  </h3>
+                  <p className="text-lg leading-relaxed text-slate-600">{activeProblem.description}</p>
+                  <ul className="space-y-4">
                     {activeProblem.bullets.map((bullet) => (
-                      <li key={bullet} className="flex gap-3 text-sm text-slate-600">
+                      <li key={bullet} className="flex gap-3 text-base text-slate-600">
                         <span
                           className={`mt-1 h-2.5 w-2.5 flex-none rounded-full bg-${activeProblem.accent}-500`}
                         />
@@ -347,20 +349,20 @@ const Landing = () => {
                     >
                       {item.title}
                     </span>
-                    <p className="text-sm leading-relaxed text-emerald-900/80">{item.description}</p>
+                    <p className="text-lg leading-relaxed text-emerald-900/80">{item.description}</p>
                   </div>
-                  <div className="flex flex-1 flex-col gap-3 rounded-2xl border border-white/70 bg-white/80 p-4 shadow-inner">
+                  <div className="flex flex-1 flex-col gap-3 rounded-2xl border border-white/70 bg-white/90 p-5 shadow-inner">
                     {item.preview.map((row) => (
-                      <div key={row.label} className="rounded-xl bg-white/90 p-3 shadow-sm">
-                        <div className="text-sm font-semibold text-emerald-700">{row.label}</div>
+                      <div key={row.label} className="rounded-xl bg-white p-4 shadow-sm">
+                        <div className="text-base font-semibold text-emerald-700">{row.label}</div>
                         {"time" in row ? (
-                          <div className="mt-1 text-xs text-slate-500">
+                          <div className="mt-1 text-sm text-slate-500">
                             {row.time} · {row.doctor} · {row.room}
                           </div>
                         ) : (
                           <>
-                            <div className="mt-1 text-lg font-semibold text-emerald-700">{row.value}</div>
-                            <div className="text-xs text-slate-500">{row.status}</div>
+                            <div className="mt-1 text-xl font-semibold text-emerald-700">{row.value}</div>
+                            <div className="text-sm text-slate-500">{row.status}</div>
                           </>
                         )}
                       </div>
