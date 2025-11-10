@@ -171,7 +171,7 @@ const Landing = () => {
               <a
                 key={item.id}
                 href={`#${item.id}`}
-                className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-emerald-100/60 hover:text-emerald-700"
+                className="rounded-full border border-white/40 bg-white/60 px-3 py-2 text-sm font-medium text-slate-600 shadow-sm backdrop-blur transition hover:bg-white/80 hover:text-emerald-700"
               >
                 {item.label}
               </a>
@@ -230,7 +230,7 @@ const Landing = () => {
                 <Button
                   size="lg"
                   variant="outline"
-                  className="border border-white/60 bg-emerald-700/80 px-10 text-lg font-semibold !text-white backdrop-blur hover:bg-emerald-700 hover:!text-white"
+                  className="border border-white/50 bg-emerald-700/70 px-10 text-lg font-semibold !text-white backdrop-blur-md hover:bg-emerald-700 hover:!text-white focus-visible:!text-white active:!text-white"
                 >
                   Смотреть демо
                 </Button>
@@ -316,10 +316,10 @@ const Landing = () => {
                   key={item.id}
                   type="button"
                   onClick={() => setActiveProblemId(item.id)}
-                  className={`rounded-full px-10 py-4 text-lg font-semibold uppercase tracking-wide transition ${
+                  className={`rounded-full border border-white/50 px-10 py-4 text-lg font-semibold uppercase tracking-wide shadow-md backdrop-blur transition ${
                     activeProblemId === item.id
-                      ? "bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white shadow-xl shadow-emerald-200/80"
-                      : "bg-white/90 text-slate-600 ring-2 ring-emerald-100 hover:bg-emerald-50 hover:text-emerald-600"
+                      ? "bg-gradient-to-r from-emerald-500/90 via-teal-500/90 to-emerald-600/90 text-white shadow-xl shadow-emerald-200/80"
+                      : "bg-white/70 text-slate-600 ring-2 ring-emerald-100/60 hover:bg-emerald-50/80 hover:text-emerald-600"
                   }`}
                 >
                   {item.name}
@@ -329,7 +329,7 @@ const Landing = () => {
 
             <div
               key={activeProblem.id}
-              className="relative overflow-hidden rounded-[32px] border border-emerald-100 bg-white/90 p-10 shadow-xl"
+              className="relative overflow-hidden rounded-[32px] border border-white/60 bg-white/75 p-10 shadow-xl backdrop-blur-md"
             >
               <div
                 className={`absolute -top-24 right-[-80px] h-56 w-56 rounded-full opacity-20 blur-3xl ${
@@ -370,7 +370,7 @@ const Landing = () => {
                   </ul>
                 </div>
 
-                <div className="relative rounded-3xl border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/40 to-white p-8 shadow-inner">
+                <div className="relative rounded-3xl border border-white/70 bg-gradient-to-br from-white/70 via-emerald-50/40 to-white/80 p-8 shadow-inner backdrop-blur">
                   <div className="space-y-4">
                     <div className="text-base font-bold uppercase tracking-[0.2em] text-slate-500">
                       Как это выглядит сейчас
@@ -379,13 +379,13 @@ const Landing = () => {
                       {activeProblem.bullets.map((bullet) => (
                         <div
                           key={bullet}
-                          className="rounded-2xl border border-white/70 bg-white/95 px-5 py-4 text-base font-medium text-slate-600 shadow-sm"
+                          className="rounded-2xl border border-white/60 bg-white/80 px-5 py-4 text-base font-medium text-slate-600 shadow-sm backdrop-blur"
                         >
                           {bullet}
                         </div>
                       ))}
                     </div>
-                    <div className="rounded-2xl border border-emerald-100 bg-white/95 p-5 text-sm font-semibold uppercase tracking-[0.25em] text-emerald-500">
+                    <div className="rounded-2xl border border-emerald-100/70 bg-white/85 p-5 text-sm font-semibold uppercase tracking-[0.25em] text-emerald-500 backdrop-blur">
                       Visual mockup
                     </div>
                   </div>
@@ -415,7 +415,7 @@ const Landing = () => {
               {solutionItems.map((item) => (
                 <div
                   key={item.title}
-                  className="flex h-full flex-col gap-7 rounded-3xl border border-emerald-100 bg-emerald-50/60 p-8 shadow-lg"
+                  className="flex h-full flex-col gap-7 rounded-3xl border border-white/60 bg-white/70 p-8 shadow-lg backdrop-blur-md"
                 >
                   <div className="space-y-4">
                     <span
@@ -427,11 +427,11 @@ const Landing = () => {
                       {item.description}
                     </p>
                   </div>
-                  <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-white/70 bg-white/95 p-6 shadow-inner">
+                  <div className="flex flex-1 flex-col gap-4 rounded-2xl border border-white/70 bg-white/80 p-6 shadow-inner backdrop-blur-sm">
                     {item.preview.map((row) => (
                       <div
                         key={row.label}
-                        className="rounded-xl bg-white p-5 shadow-sm"
+                        className="rounded-xl border border-white/60 bg-white/80 p-5 shadow-sm backdrop-blur"
                       >
                         <div className="text-lg font-bold text-emerald-700">
                           {row.label}
