@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
@@ -10,13 +11,118 @@ const navItems = [
 ];
 
 const Landing = () => {
+  const problemTabs = [
+    {
+      id: "schedule-chaos",
+      name: "Хаос в расписании",
+      headline: "Пациенты теряются между кабинетами",
+      description:
+        "График ведётся в блокнотах и Excel. Переносы и отмены записываются вручную, поэтому пациенты приходят одновременно, а кабинеты простаивают.",
+      bullets: [
+        "Нет единого календаря по врачам и кабинетам",
+        "Переносы не доходят до врача — появляется тройное бронирование",
+        "Администраторы звонят по 40+ раз в день, чтобы уточнить время",
+      ],
+      accent: "emerald",
+    },
+    {
+      id: "payments",
+      name: "Нет контроля оплат",
+      headline: "Неясно, кто оплатил лечение",
+      description:
+        "Наличные, переводы и долги записываются в разных тетрадях. Руководитель узнаёт о финансовых провалах только в конце месяца.",
+      bullets: [
+        "Не видно, какая сумма уже получена и кому начислять процент",
+        "Долги пациентов растут незаметно — нет напоминаний об оплате",
+        "Касса не сходится: наличные и e-wallet не сведены",
+      ],
+      accent: "sky",
+    },
+    {
+      id: "reporting",
+      name: "Слепые отчёты",
+      headline: "Решения принимаются «на глаз»",
+      description:
+        "Чтобы собрать показатели, администратор вручную сводит таблицы, ищет услуги в чатах и строит графики в последний момент.",
+      bullets: [
+        "Нет дашборда по выручке, процентам и загрузке врачей",
+        "Живые показатели появляются только к концу месяца",
+        "Руководитель не понимает, что тормозит клинику прямо сейчас",
+      ],
+      accent: "amber",
+    },
+  ];
+
+  const solutionItems = [
+    {
+      title: "Единое расписание",
+      description:
+        "Врачи, администраторы и руководители работают в одном календаре. Переносы синхронизируются автоматически, цепочки лечения видны на 6 месяцев вперёд.",
+      accent: "emerald",
+      preview: [
+        { time: "09:00", label: "Имплантация", doctor: "Д-р Азизова", room: "Каб. 2" },
+        { time: "11:30", label: "Гигиена", doctor: "Д-р Саидов", room: "Каб. 4" },
+        { time: "14:00", label: "Ортодонтия", doctor: "Д-р Муродов", room: "Каб. 1" },
+      ],
+    },
+    {
+      title: "Умные оплаты",
+      description:
+        "Каждый визит связывается с кассой и электронными платежами. Врачи видят свои начисления, пациенты получают чеки, задолженности подсвечиваются автоматически.",
+      accent: "sky",
+      preview: [
+        { label: "Оплата визита", value: "560 TJS", status: "Получено через e-wallet" },
+        { label: "Долг пациента", value: "120 TJS", status: "Напоминание отправлено" },
+        { label: "Процент врачу", value: "40%", status: "Начислено" },
+      ],
+    },
+    {
+      title: "Оцифрованная аналитика",
+      description:
+        "Дашборды показывают загрузку кабинетов, выручку по услугам и эффективность врачей. Решения принимаются по данным, а не по ощущениям.",
+      accent: "amber",
+      preview: [
+        { label: "Выручка за неделю", value: "+18%", status: "Рост к прошлой неделе" },
+        { label: "Заполненность кресел", value: "87%", status: "В норме" },
+        { label: "Новые пациенты", value: "32", status: "Через рекомендации" },
+      ],
+    },
+  ];
+
+  const faqItems = [
+    {
+      question: "Можно ли работать без интернета?",
+      answer:
+        "Да. Версия на Windows работает полностью офлайн. Когда интернет появляется — данные синхронизируются с облаком.",
+    },
+    {
+      question: "Сколько времени занимает запуск?",
+      answer:
+        "Обычно мы настраиваем клинику за 3–5 дней: переносим пациентов, подключаем расписание и учим команду работать в системе.",
+    },
+    {
+      question: "Как подключить несколько филиалов?",
+      answer:
+        "Serkor изначально поддерживает сети. Вы будете видеть загрузку по каждой клинике и управлять финансовыми потоками из одной панели.",
+    },
+    {
+      question: "Что с безопасностью данных пациентов?",
+      answer:
+        "Храним данные в зашифрованном виде. Доступ разграничен по ролям. В офлайн-версии вся информация остаётся локально на устройстве.",
+    },
+  ];
+
+  const [activeProblemId, setActiveProblemId] = useState(problemTabs[0].id);
+  const activeProblem = problemTabs.find((item) => item.id === activeProblemId) ?? problemTabs[0];
+  const [openFaqId, setOpenFaqId] = useState<string | null>(null);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-emerald-50 via-white to-indigo-50 text-slate-900">
-      <header className="sticky top-0 z-40 border-b border-emerald-100/60 bg-white/80 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-emerald-100 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-200/60 shadow-sm">
-              <img src="/ser.png" alt="Serkor" className="h-9 w-9 object-contain" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-200/60 shadow-sm">
+              <img src="/ser.png" alt="Serkor" className="h-full w-full rounded-full object-cover" />
             </div>
             <div className="flex flex-col leading-tight">
               <span className="text-xl font-semibold text-emerald-700">Serkor Dental</span>
@@ -137,67 +243,80 @@ const Landing = () => {
             </p>
           </div>
 
-          <div className="mt-14 grid gap-6 md:grid-cols-2">
-            {[
-              {
-                title: "Хаос в расписании",
-                description:
-                  "Записи ведутся в блокнотах и Excel. При переносах теряются пациенты, а кабинеты простаивают по несколько часов.",
-                tone: "emerald",
-              },
-              {
-                title: "Нет контроля оплат",
-                description:
-                  "Касса, наличные и переводы расходятся. Руководитель не видит, кто оплатил лечение, какая сумма в долгах и что начислить врачам.",
-                tone: "sky",
-              },
-              {
-                title: "Команда работает в разрозненных чатах",
-                description:
-                  "Администраторы вручную напоминают о визитах, присылают фото зубных карт и теряют историю общения.",
-                tone: "amber",
-              },
-              {
-                title: "Отчёты собираются вручную",
-                description:
-                  "Чтобы посчитать выручку, нужно объединять таблицы и сверять переписки. Решения принимаются на ощущениях, а не на данных.",
-                tone: "slate",
-              },
-            ].map((item) => (
+          <div className="mt-14 space-y-6">
+            <div className="flex flex-col items-center justify-center gap-3 md:flex-row">
+              {problemTabs.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setActiveProblemId(item.id)}
+                  className={`rounded-full px-5 py-2 text-sm font-semibold transition ${
+                    activeProblemId === item.id
+                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-200/70"
+                      : "bg-white text-slate-500 hover:bg-emerald-50 hover:text-emerald-600"
+                  }`}
+                >
+                  {item.name}
+                </button>
+              ))}
+            </div>
+
               <div
-                key={item.title}
-                className="group relative overflow-hidden rounded-[28px] border border-emerald-100 bg-white/85 p-7 shadow-sm transition hover:-translate-y-1 hover:shadow-xl"
+              key={activeProblem.id}
+              className="relative overflow-hidden rounded-[32px] border border-emerald-100 bg-white/90 p-10 shadow-xl"
               >
                 <div
-                  className={`absolute -top-12 right-[-40px] h-32 w-32 rounded-full opacity-20 blur-3xl transition group-hover:opacity-30 ${
-                    item.tone === "emerald"
-                      ? "bg-emerald-300"
-                      : item.tone === "sky"
-                      ? "bg-sky-300"
-                      : item.tone === "amber"
-                      ? "bg-amber-300"
-                      : "bg-slate-300"
-                  }`}
+                className={`absolute -top-24 right-[-80px] h-56 w-56 rounded-full opacity-20 blur-3xl ${
+                  activeProblem.accent === "emerald"
+                    ? "bg-emerald-300"
+                    : activeProblem.accent === "sky"
+                    ? "bg-sky-300"
+                    : "bg-amber-300"
+                }`}
                 />
-                <div className="relative space-y-3">
+              <div className="relative grid gap-10 md:grid-cols-[1.2fr_1fr] md:items-center">
+                <div className="space-y-5 text-left">
                   <span
-                    className={`inline-flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-semibold text-white ${
-                      item.tone === "emerald"
-                        ? "bg-emerald-500"
-                        : item.tone === "sky"
-                        ? "bg-sky-500"
-                        : item.tone === "amber"
-                        ? "bg-amber-500"
-                        : "bg-slate-500"
-                    }`}
+                    className={`inline-flex items-center rounded-full px-4 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-${
+                      activeProblem.accent
+                    }-600`}
                   >
-                    {item.title.slice(0, 1)}
+                    {activeProblem.name}
                   </span>
-                  <h3 className="text-xl font-semibold text-slate-900">{item.title}</h3>
-                  <p className="text-sm leading-relaxed text-slate-600">{item.description}</p>
+                  <h3 className="text-3xl font-semibold text-slate-900">{activeProblem.headline}</h3>
+                  <p className="text-base leading-relaxed text-slate-600">{activeProblem.description}</p>
+                  <ul className="space-y-3">
+                    {activeProblem.bullets.map((bullet) => (
+                      <li key={bullet} className="flex gap-3 text-sm text-slate-600">
+                        <span
+                          className={`mt-1 h-2.5 w-2.5 flex-none rounded-full bg-${activeProblem.accent}-500`}
+                        />
+                        <span>{bullet}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="relative rounded-3xl border border-emerald-100 bg-gradient-to-br from-white via-emerald-50/40 to-white p-8 shadow-inner">
+                  <div className="space-y-4">
+                    <div className="text-sm font-semibold text-slate-400">Как это выглядит сейчас</div>
+                    <div className="space-y-3">
+                      {activeProblem.bullets.map((bullet) => (
+                        <div
+                          key={bullet}
+                          className="rounded-2xl border border-white/70 bg-white/90 px-4 py-3 text-sm text-slate-600 shadow-sm"
+                        >
+                          {bullet}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="rounded-2xl border border-emerald-100 bg-white/95 p-4 text-xs uppercase tracking-[0.2em] text-emerald-500">
+                      Visual mockup
+                    </div>
+                  </div>
                 </div>
               </div>
-            ))}
+            </div>
           </div>
         </section>
 
@@ -216,27 +335,37 @@ const Landing = () => {
               </p>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-3">
-              {[
-                {
-                  title: "Единое расписание",
-                  description:
-                    "Календарь клиники синхронизирован с врачами и кабинетами. Переносы, цепочки лечения и планы — под контролем.",
-                },
-                {
-                  title: "Умные напоминания",
-                  description:
-                    "SMS и WhatsApp автоматически напоминают пациентам о визитах. Нет простоев, врачи заняты временем без провалов.",
-                },
-                {
-                  title: "Платежи и аналитика",
-                  description:
-                    "Контроль оплат, кассы, долг по пациентам и проценты врачей. Отчёты по выручке и эффективности — в один клик.",
-                },
-              ].map((item) => (
-                <div key={item.title} className="rounded-3xl border border-emerald-100 bg-emerald-50/60 p-6">
-                  <h3 className="text-xl font-semibold text-emerald-700">{item.title}</h3>
-                  <p className="mt-3 text-sm leading-relaxed text-emerald-900/80">{item.description}</p>
+            <div className="grid gap-8 md:grid-cols-3">
+              {solutionItems.map((item) => (
+                <div
+                  key={item.title}
+                  className="flex h-full flex-col gap-6 rounded-3xl border border-emerald-100 bg-emerald-50/60 p-6"
+                >
+                  <div className="space-y-3">
+                    <span
+                      className={`inline-flex items-center justify-center rounded-full px-4 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-${item.accent}-600`}
+                    >
+                      {item.title}
+                    </span>
+                    <p className="text-sm leading-relaxed text-emerald-900/80">{item.description}</p>
+                  </div>
+                  <div className="flex flex-1 flex-col gap-3 rounded-2xl border border-white/70 bg-white/80 p-4 shadow-inner">
+                    {item.preview.map((row) => (
+                      <div key={row.label} className="rounded-xl bg-white/90 p-3 shadow-sm">
+                        <div className="text-sm font-semibold text-emerald-700">{row.label}</div>
+                        {"time" in row ? (
+                          <div className="mt-1 text-xs text-slate-500">
+                            {row.time} · {row.doctor} · {row.room}
+                          </div>
+                        ) : (
+                          <>
+                            <div className="mt-1 text-lg font-semibold text-emerald-700">{row.value}</div>
+                            <div className="text-xs text-slate-500">{row.status}</div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -334,33 +463,26 @@ const Landing = () => {
             </div>
 
             <div className="space-y-4">
-              {[
-                {
-                  question: "Можно ли работать без интернета?",
-                  answer:
-                    "Да. Версия на Windows работает полностью офлайн. Когда интернет появляется — данные синхронизируются с облаком.",
-                },
-                {
-                  question: "Сколько времени занимает запуск?",
-                  answer:
-                    "Обычно мы настраиваем клинику за 3–5 дней: переносим пациентов, подключаем расписание и учим команду работать в системе.",
-                },
-                {
-                  question: "Как подключить несколько филиалов?",
-                  answer:
-                    "Serkor изначально поддерживает сети. Вы будете видеть загрузку по каждой клинике и управлять финансовыми потоками из одной панели.",
-                },
-                {
-                  question: "Что с безопасностью данных пациентов?",
-                  answer:
-                    "Храним данные в зашифрованном виде. Доступ разграничен по ролям. В офлайн-версии вся информация остаётся локально на устройстве.",
-                },
-              ].map((item) => (
-                <div key={item.question} className="rounded-3xl border border-emerald-100 bg-white p-6 shadow-sm">
-                  <h3 className="text-lg font-semibold text-slate-900">{item.question}</h3>
-                  <p className="mt-3 text-sm leading-relaxed text-slate-600">{item.answer}</p>
-                </div>
-              ))}
+              {faqItems.map((item) => {
+                const isOpen = openFaqId === item.question;
+                return (
+                  <div key={item.question} className="overflow-hidden rounded-3xl border border-emerald-100 bg-white shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setOpenFaqId(isOpen ? null : item.question)}
+                      className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left"
+                    >
+                      <span className="text-lg font-semibold text-slate-900">{item.question}</span>
+                      <span className="text-emerald-500">{isOpen ? "−" : "+"}</span>
+                    </button>
+                    {isOpen && (
+                      <div className="border-t border-emerald-50 px-6 pb-6 text-sm leading-relaxed text-slate-600">
+                        {item.answer}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>
