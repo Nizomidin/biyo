@@ -80,22 +80,41 @@ The desktop build points to the same local data store as the web app and keeps A
 
 ## Backend service (Google Sheets)
 
-The project now ships with an Express server that persists all clinic data in Google Sheets. Provide a service account with access to your spreadsheet and expose the credentials as environment variables:
+The project includes a Python FastAPI backend that persists all clinic data in Google Sheets. See `backend-python/README.md` for detailed setup and deployment instructions.
 
-```sh
-GOOGLE_SHEETS_ID=<spreadsheet id>
-GOOGLE_CLIENT_EMAIL=<service account email>
-GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-BACKEND_PORT=4000 # optional, defaults to 4000
-```
+**Quick start:**
 
-Start the backend with:
+1. Install Python dependencies:
+   ```sh
+   cd backend-python
+   pip install -r requirements.txt
+   ```
 
-```sh
-npm run server:dev
-```
+2. Configure environment variables (copy from `.env.example`):
+   ```sh
+   GOOGLE_SHEETS_ID=<spreadsheet id>
+   GOOGLE_CLIENT_EMAIL=<service account email>
+   GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+   BACKEND_PORT=4000 # optional, defaults to 4000
+   ```
+
+3. Start the backend:
+   ```sh
+   python main.py
+   # or
+   uvicorn main:app --host 0.0.0.0 --port 4000 --reload
+   ```
+
+4. Share your Google Sheet with the service account email (give it Editor permissions)
 
 By default the frontend points to `http://localhost:4000/api`. To target a different backend URL, set `VITE_API_URL` before running `npm run dev`.
+
+**Deployment:** The Python backend can be deployed to:
+- **VPS (Recommended for production)**: See `backend-python/DEPLOY_VPS.md` for complete VPS setup guide
+- **Render, Railway, Fly.io**: See `backend-python/README.md` for platform-specific instructions
+- **Google Cloud Run**: See `backend-python/README.md` for container deployment
+
+For production VPS deployment with SSL, reverse proxy, and systemd service, follow the detailed guide in `backend-python/DEPLOY_VPS.md`.
 
 ## How can I deploy this project?
 
