@@ -22,64 +22,67 @@ const queryClient = new QueryClient();
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => !!store.getCurrentUser());
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    const checkAuth = () => {
+    const evaluateAuth = async () => {
       try {
         const user = store.getCurrentUser();
         const hasUser = !!user;
         setIsAuthenticated(hasUser);
-        
-        // Update patient balances when user is authenticated
+        setIsReady(true);
+
         if (hasUser) {
-          store.updatePatientBalances().catch(err => console.error('Balance update failed:', err));
+          await store.updatePatientBalances().catch((err) => console.error("Balance update failed:", err));
         }
       } catch (error) {
-        console.error('Error checking auth:', error);
+        console.error("Error checking auth:", error);
         setIsAuthenticated(false);
+        setIsReady(true);
       }
     };
-    
-    // Check immediately
-    checkAuth();
-    
-    // Check auth state more frequently to catch logout events quickly
-    const interval = setInterval(checkAuth, 50);
-    
-    // Sync from API every 5 seconds if API sync is enabled
-    // Delay first sync to avoid initialization issues
-    const syncInterval = setInterval(() => {
-      try {
-        const user = store.getCurrentUser();
-        if (user) {
-          store.syncFromAPI().catch(err => console.error('Sync failed:', err));
-        }
-      } catch (error) {
-        console.error('Error in sync interval:', error);
+
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === "biyo_current_user" || event.key === null) {
+        void evaluateAuth();
       }
-    }, 5000);
-    
-    // Initial sync after a delay to avoid initialization race conditions
-    setTimeout(() => {
-      try {
-        const user = store.getCurrentUser();
-        if (user) {
-          store.syncFromAPI().catch(err => console.error('Initial sync failed:', err));
-        }
-      } catch (error) {
-        console.error('Error in initial sync:', error);
-      }
-    }, 1000);
-    
+    };
+
+    const handleAuthChanged = (_event: Event) => {
+      void evaluateAuth();
+    };
+
+    void evaluateAuth();
+    window.addEventListener("storage", handleStorageChange);
+    window.addEventListener("biyo-auth-changed", handleAuthChanged);
+
     return () => {
-      clearInterval(interval);
-      clearInterval(syncInterval);
+      window.removeEventListener("storage", handleStorageChange);
+      window.removeEventListener("biyo-auth-changed", handleAuthChanged);
     };
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    const runSync = () => {
+      store.syncFromAPI().catch((err) => console.error("Sync failed:", err));
+    };
+
+    const interval = setInterval(runSync, 10000);
+    // Perform an eager sync when authentication state flips to true
+    runSync();
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isAuthenticated]);
+
   // Show loading state briefly while checking
-  if (isAuthenticated === null) {
+  if (!isReady) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">

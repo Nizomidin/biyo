@@ -1,129 +1,76 @@
-# Welcome to your Lovable project
-12
-## Project info
+# Serkor Dental
 
-**URL**: https://lovable.dev/projects/62edfae4-4db9-403b-ad17-5854d5725e0c
+## Stack
 
-## How can I edit this code?
+- Vite + React + TypeScript (frontend)
+- Tailwind CSS + shadcn/ui component primitives
+- FastAPI + SQLAlchemy (backend)
+- SQLite (default datastore)
 
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/62edfae4-4db9-403b-ad17-5854d5725e0c) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## Getting Started
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# install frontend dependencies
+yarn install # or npm install
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# create and activate a Python virtualenv (recommended)
+python3 -m venv .venv
+source .venv/bin/activate
 
-# Step 3: Install the necessary dependencies.
-npm i
+# install backend dependencies
+pip install -r backend/requirements.txt
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+# run the FastAPI server (defaults to http://localhost:8000)
+npm run server
+
+# in a separate terminal, start the frontend
+yarn dev # or npm run dev
 ```
 
-**Edit a file directly in GitHub**
+Set `VITE_API_URL` to point the frontend at a different backend origin if required (defaults to `http://localhost:8000/api`).
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+Database files are written to `backend/data/app.db`; remove the file to start with a clean slate.
 
-**Use GitHub Codespaces**
+## Scripts
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+- `npm run dev` – start the Vite dev server.
+- `npm run build` / `npm run build:dev` – production or development builds.
+- `npm run lint` – run ESLint across the project.
+- `npm run preview` – preview the built frontend locally.
+- `npm run server` – run the FastAPI backend with `uvicorn --reload`.
 
-## What technologies are used for this project?
+## Backend Overview
 
-This project is built with:
+The new FastAPI backend exposes the following high-level resources under `/api`:
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-- Tauri (desktop wrapper)
+| Resource | Description |
+| --- | --- |
+| `/clinics` | Create, update, list, and delete clinics |
+| `/users` | Clinic users with optional role linkage |
+| `/doctors` | Doctors tied to clinics/users |
+| `/services` | Billable services per clinic |
+| `/patients` | Patient records, tooth charts, balances |
+| `/visits` | Scheduled/completed visits with services and payments |
+| `/payments` | Payment records linked to visits |
+| `/files` | Metadata for patient file uploads (string URLs) |
 
-## Desktop (Tauri) development
+All endpoints accept and return camelCase JSON to remain compatible with the existing React store. IDs are stable string identifiers (e.g. `patient_abcdef12`).
 
-You can run the app as an offline-first desktop experience using Tauri. Make sure the Rust toolchain is installed (`rustup` recommended), then:
+## Environment Variables
 
-```sh
-# install dependencies
-npm install
+FastAPI settings live in `backend/app/config.py` and can be overridden via a `.env` file placed inside `backend/`:
 
-# run the desktop app in dev mode (wraps npm run dev)
-npm run tauri:dev
-
-# create a distributable build (Windows .msi/.exe, plus other targets on macOS/Linux)
-npm run tauri:build
+```env
+APP_NAME=Serkor Dental API
+SQLITE_PATH=backend/data/app.db
+DATABASE_URL=sqlite:///custom/path.db
+DEBUG=true
 ```
 
-The desktop build points to the same local data store as the web app and keeps API sync disabled by default so it works fully offline. You can re-enable remote sync by setting `VITE_ENABLE_API_SYNC=true` before running the Tauri commands.
+`DATABASE_URL` takes precedence if provided (any SQLAlchemy-compatible URL). When absent, the app falls back to the SQLite file inside `backend/data/`.
 
-## Backend service (Google Sheets)
+## Notes
 
-The project includes a Python FastAPI backend that persists all clinic data in Google Sheets. See `backend-python/README.md` for detailed setup and deployment instructions.
-
-**Quick start:**
-
-1. Install Python dependencies:
-   ```sh
-   cd backend-python
-   pip install -r requirements.txt
-   ```
-
-2. Configure environment variables (copy from `.env.example`):
-   ```sh
-   GOOGLE_SHEETS_ID=<spreadsheet id>
-   GOOGLE_CLIENT_EMAIL=<service account email>
-   GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-   BACKEND_PORT=4000 # optional, defaults to 4000
-   ```
-
-3. Start the backend:
-   ```sh
-   python main.py
-   # or
-   uvicorn main:app --host 0.0.0.0 --port 4000 --reload
-   ```
-
-4. Share your Google Sheet with the service account email (give it Editor permissions)
-
-By default the frontend points to `http://localhost:4000/api`. To target a different backend URL, set `VITE_API_URL` before running `npm run dev`.
-
-**Deployment:** The Python backend can be deployed to:
-- **VPS (Recommended for production)**: See `backend-python/DEPLOY_VPS.md` for complete VPS setup guide
-- **Render, Railway, Fly.io**: See `backend-python/README.md` for platform-specific instructions
-- **Google Cloud Run**: See `backend-python/README.md` for container deployment
-
-For production VPS deployment with SSL, reverse proxy, and systemd service, follow the detailed guide in `backend-python/DEPLOY_VPS.md`.
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/62edfae4-4db9-403b-ad17-5854d5725e0c) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+- Binary patient files are not uploaded automatically; the API expects a string URL. Extend the `/files` endpoint to integrate with your preferred storage if needed.
+- Remove `backend/data/app.db` if you want to reseed the database locally.
+- Replace the SQLite engine with Postgres/MySQL by updating `DATABASE_URL` and installing the corresponding driver.

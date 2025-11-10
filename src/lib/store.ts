@@ -1,9 +1,12 @@
 // Data store with localStorage persistence and API sync
 // Lazy import apiClient to avoid circular dependency
-let apiClientPromise: Promise<any> | null = null;
-const getApiClient = async () => {
+type ApiModule = typeof import("./api");
+type ApiClientInstance = ApiModule["apiClient"];
+
+let apiClientPromise: Promise<ApiClientInstance> | null = null;
+const getApiClient = async (): Promise<ApiClientInstance> => {
   if (!apiClientPromise) {
-    apiClientPromise = import('./api').then(module => module.apiClient);
+    apiClientPromise = import("./api").then((module) => module.apiClient);
   }
   return apiClientPromise;
 };
@@ -12,12 +15,20 @@ const getApiClient = async () => {
 // Default to true for full cross-device sync (works in both dev and prod)
 // Set VITE_ENABLE_API_SYNC=false to disable
 const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC === 'true';
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
-type ApiClientInstance = Awaited<ReturnType<typeof getApiClient>>;
 const MAX_API_SYNC_FAILURES = 3;
 let apiSyncEnabled = ENABLE_API_SYNC;
 let apiSyncFailureCount = 0;
 let apiSyncDisabledNotified = false;
+
+const isNonRetryableApiError = (error: unknown): error is { status: number } => {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof (error as { status?: unknown }).status === "number" &&
+    (error as { status: number }).status < 500
+  );
+};
 
 const runApiSync = async (
   handler: (client: ApiClientInstance) => Promise<void>,
@@ -30,6 +41,15 @@ const runApiSync = async (
     await handler(client);
     apiSyncFailureCount = 0;
   } catch (error) {
+    if (isNonRetryableApiError(error)) {
+      apiSyncEnabled = false;
+      if (!apiSyncDisabledNotified && import.meta.env.DEV) {
+        console.warn(`[API sync] Disabled after non-retryable error (${context}):`, error);
+        apiSyncDisabledNotified = true;
+      }
+      return;
+    }
+
     apiSyncFailureCount += 1;
     if (apiSyncFailureCount >= MAX_API_SYNC_FAILURES) {
       apiSyncEnabled = false;
@@ -273,6 +293,8 @@ class Store {
     const allFiles = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
     const files = allFiles.filter((f) => !(f.patientId === patientId && f.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.FILES, files);
+
+    runApiSync((client) => client.deletePatient(patientId), 'deletePatient');
   }
 
   // Doctors
@@ -318,6 +340,8 @@ class Store {
     const allDoctors = getFromStorage<Doctor>(STORAGE_KEYS.DOCTORS, []);
     const doctors = allDoctors.filter((d) => !(d.id === doctorId && d.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.DOCTORS, doctors);
+
+    runApiSync((client) => client.deleteDoctor(doctorId), 'deleteDoctor');
   }
 
   // Services
@@ -363,6 +387,8 @@ class Store {
     const allServices = getFromStorage<Service>(STORAGE_KEYS.SERVICES, []);
     const services = allServices.filter((s) => !(s.id === serviceId && s.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.SERVICES, services);
+
+    runApiSync((client) => client.deleteService(serviceId), 'deleteService');
   }
 
   // Visits
@@ -411,6 +437,8 @@ class Store {
     const allVisits = getFromStorage<Visit>(STORAGE_KEYS.VISITS, []);
     const visits = allVisits.filter((v) => !(v.id === visitId && v.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.VISITS, visits);
+
+    runApiSync((client) => client.deleteVisit(visitId), 'deleteVisit');
   }
 
   // Payments
@@ -493,9 +521,11 @@ class Store {
     saveToStorage(STORAGE_KEYS.FILES, allFiles);
     // Dispatch custom event to notify other components
     window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'files' } }));
-    
+
     // Sync to API in background
-    runApiSync((client) => client.saveFile(file), 'saveFile');
+    if (typeof file.file === "string") {
+      runApiSync((client) => client.saveFile(file), 'saveFile');
+    }
   }
 
   deleteFile(fileId: string): void {
@@ -505,6 +535,8 @@ class Store {
     const allFiles = getFromStorage<PatientFile>(STORAGE_KEYS.FILES, []);
     const files = allFiles.filter((f) => !(f.id === fileId && f.clinicId === clinicId));
     saveToStorage(STORAGE_KEYS.FILES, files);
+
+    runApiSync((client) => client.deleteFile(fileId), 'deleteFile');
   }
 
   // Calculate patient balance from visits
@@ -950,6 +982,10 @@ class Store {
       localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
     } else {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent('biyo-auth-changed', { detail: { user } }));
     }
   }
 

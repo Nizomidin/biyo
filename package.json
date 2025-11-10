@@ -9,10 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "tsx backend/src/server.ts",
-    "server:dev": "tsx watch backend/src/server.ts",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "server": "uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -44,10 +41,6 @@
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
     "@tanstack/react-query": "^5.83.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.2",
-    "googleapis": "^140.0.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -72,12 +65,9 @@
   "devDependencies": {
     "@eslint/js": "^9.32.0",
     "@tailwindcss/typography": "^0.5.16",
-    "@tauri-apps/cli": "^2.9.4",
     "@types/node": "^22.16.5",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
-    "@types/express": "^4.17.21",
-    "@types/cors": "^2.8.17",
     "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.21",
     "eslint": "^9.32.0",
