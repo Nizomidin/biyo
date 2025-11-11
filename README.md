@@ -80,17 +80,19 @@ The desktop build points to the same local data store as the web app and keeps A
 
 ## Backend service (Google Sheets)
 
-The project includes a Python FastAPI backend that persists all clinic data in Google Sheets. See `backend-python/README.md` for detailed setup and deployment instructions.
+The project includes a Python FastAPI backend (see `backend/`) that persists all clinic data in Google Sheets.
 
 **Quick start:**
 
-1. Install Python dependencies:
+1. Install dependencies:
    ```sh
-   cd backend-python
+   cd backend
+   python -m venv .venv
+   source .venv/bin/activate
    pip install -r requirements.txt
    ```
 
-2. Configure environment variables (copy from `.env.example`):
+2. Create `.env` (there is an `.env.example`):
    ```sh
    GOOGLE_SHEETS_ID=<spreadsheet id>
    GOOGLE_CLIENT_EMAIL=<service account email>
@@ -98,23 +100,18 @@ The project includes a Python FastAPI backend that persists all clinic data in G
    BACKEND_PORT=4000 # optional, defaults to 4000
    ```
 
-3. Start the backend:
+3. Share the spreadsheet with the service account email (Editor rights).
+
+4. Run the server:
    ```sh
    python main.py
    # or
    uvicorn main:app --host 0.0.0.0 --port 4000 --reload
    ```
 
-4. Share your Google Sheet with the service account email (give it Editor permissions)
+By default the frontend points to `http://localhost:4000/api`. Set `VITE_API_URL` before `npm run dev` to use a different backend URL.
 
-By default the frontend points to `http://localhost:4000/api`. To target a different backend URL, set `VITE_API_URL` before running `npm run dev`.
-
-**Deployment:** The Python backend can be deployed to:
-- **VPS (Recommended for production)**: See `backend-python/DEPLOY_VPS.md` for complete VPS setup guide
-- **Render, Railway, Fly.io**: See `backend-python/README.md` for platform-specific instructions
-- **Google Cloud Run**: See `backend-python/README.md` for container deployment
-
-For production VPS deployment with SSL, reverse proxy, and systemd service, follow the detailed guide in `backend-python/DEPLOY_VPS.md`.
+For production, host the backend on a VPS or any Node/Python-friendly provider behind HTTPS (e.g. Nginx + Let's Encrypt) and point `VITE_API_URL` to `https://api.yourdomain.com/api`.
 
 ## How can I deploy this project?
 
