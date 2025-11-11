@@ -7,8 +7,8 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
+from dataclasses import dataclass
 
 from models import Clinic, Doctor, Patient, PatientFile, Service, User, Visit
 from models import Payment
@@ -18,16 +18,12 @@ from sheets_client import SheetsClient
 load_dotenv()
 
 
-class Settings(BaseSettings):
+@dataclass
+class Settings:
     spreadsheet_id: str
     client_email: str
     private_key: str
     port: int = 4000
-
-    class Config:
-        env_prefix = "GOOGLE_"
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 def create_settings() -> Settings:
