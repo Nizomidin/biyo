@@ -38,8 +38,8 @@ const extractErrorMessage = (payload: unknown, fallback: string): string => {
     return payload;
   }
   if (payload && typeof payload === "object") {
-    const maybeError = (payload as { error?: unknown; message?: unknown }).error
-      ?? (payload as { error?: unknown; message?: unknown }).message;
+    const payloadObj = payload as { error?: unknown; message?: unknown; detail?: unknown };
+    const maybeError = payloadObj.detail ?? payloadObj.error ?? payloadObj.message;
     if (typeof maybeError === "string" && maybeError.trim().length > 0) {
       return maybeError;
     }
@@ -54,6 +54,12 @@ export class ApiError extends Error {
     public readonly detail?: unknown,
   ) {
     super(message);
+    // Make detail accessible for error handling
+    if (detail && typeof detail === 'object' && 'detail' in detail) {
+      this.detail = (detail as { detail: unknown }).detail;
+    } else {
+      this.detail = detail;
+    }
   }
 }
 
@@ -312,6 +318,21 @@ class ApiClient {
 
   async deletePayment(paymentId: string): Promise<void> {
     await this.request<void>(`/payments/${paymentId}`, { method: "DELETE" });
+  }
+
+  // OTP
+  async sendOTP(phone: string): Promise<{ message: string; otp?: string }> {
+    return this.request<{ message: string; otp?: string }>("/users/otp/send", {
+      method: "POST",
+      body: { phone },
+    });
+  }
+
+  async verifyOTP(phone: string, otp: string): Promise<{ verified: boolean }> {
+    return this.request<{ verified: boolean }>("/users/otp/verify", {
+      method: "POST",
+      body: { phone, otp },
+    });
   }
 }
 

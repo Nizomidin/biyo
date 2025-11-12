@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Search, Plus, Phone, Mail, Trash2 } from "lucide-react";
+import { Search, Plus, Phone, Mail, Trash2, Upload, File, Eye, Edit2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -50,7 +50,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ToothChart } from "@/components/ToothChart";
-import { store, Patient, ToothStatus, VisitService } from "@/lib/store";
+import { store, Patient, ToothStatus, VisitService, Payment, Visit, PatientFile } from "@/lib/store";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
@@ -267,6 +267,7 @@ const Patients = () => {
                     key={patient.id}
                     className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
                     onClick={() => handlePatientClick(patient)}
+                    data-tour="patient-card"
                   >
                     <div className="flex-1">
                       <div className="font-medium mb-1">{patient.name}</div>
@@ -440,7 +441,7 @@ function AddPatientDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
+        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2" data-tour="add-patient">
           <Plus className="h-4 w-4" />
           Добавить пациента
         </Button>
@@ -758,6 +759,9 @@ export function PatientCard({
   const [selectedVisitForPayment, setSelectedVisitForPayment] = useState<
     string | null
   >(null);
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
+  const [editingPaymentAmount, setEditingPaymentAmount] = useState("");
+  const [editingPaymentMethod, setEditingPaymentMethod] = useState<"cash" | "ewallet">("cash");
   const [visits, setVisits] = useState(() => 
     store.getVisits()
       .filter((v) => v.patientId === patient.id)
@@ -767,6 +771,12 @@ export function PatientCard({
   const [visitCostInputs, setVisitCostInputs] = useState<Record<string, string>>(
     {}
   );
+  const [files, setFiles] = useState<PatientFile[]>(() =>
+    store.getFiles().filter((f) => f.patientId === patient.id)
+  );
+  const [editingFileNameId, setEditingFileNameId] = useState<string | null>(null);
+  const [editingFileName, setEditingFileName] = useState("");
+  const [viewingFile, setViewingFile] = useState<PatientFile | null>(null);
 
   // Refresh visits and patient data periodically to catch updates from other users
   useEffect(() => {
@@ -776,6 +786,10 @@ export function PatientCard({
         .filter((v) => v.patientId === patient.id)
         .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
       setVisits(updatedVisits);
+      
+      // Refresh files
+      const updatedFiles = store.getFiles().filter((f) => f.patientId === patient.id);
+      setFiles(updatedFiles);
       
       // Refresh patient data (to get updated balance)
       const updatedPatient = store.getPatients().find((p) => p.id === patient.id);
@@ -899,9 +913,9 @@ export function PatientCard({
         setTeeth(normalizedTeeth);
       }
 
-      setIsEditing(false);
-      setIsEditingTeeth(false);
-      toast.success("Данные пациента обновлены");
+    setIsEditing(false);
+    setIsEditingTeeth(false);
+    toast.success("Данные пациента обновлены");
     } catch (error) {
       console.error("Failed to save patient", error);
       toast.error("Не удалось сохранить данные пациента");
@@ -940,8 +954,8 @@ export function PatientCard({
         setTeeth(normalizedTeeth);
       }
 
-      setIsEditingTeeth(false);
-      toast.success("Зубная карта обновлена");
+    setIsEditingTeeth(false);
+    toast.success("Зубная карта обновлена");
     } catch (error) {
       console.error("Failed to save teeth changes", error);
       toast.error("Не удалось сохранить зубную карту");
@@ -969,7 +983,7 @@ export function PatientCard({
       if (ewalletAmount && ewalletAmount > 0) {
         await store.addPayment(visitId, ewalletAmount, "ewallet");
       }
-      toast.success("Платеж добавлен");
+    toast.success("Платеж добавлен");
     } catch (error) {
       console.error("Failed to add payment", error);
       toast.error("Не удалось добавить платеж");
@@ -991,7 +1005,7 @@ export function PatientCard({
       await store.savePatient(updatedPatient);
       setPatient(updatedPatient);
     }
-
+    
     setPaymentCashAmount("");
     setPaymentEwalletAmount("");
     setSelectedVisitForPayment(null);
@@ -1043,6 +1057,275 @@ export function PatientCard({
       console.error("Failed to save visit cost", error);
       toast.error("Не удалось сохранить стоимость визита");
     }
+  };
+
+  const handleStartEditPayment = (payment: Payment) => {
+    setEditingPaymentId(payment.id);
+    setEditingPaymentAmount(formatAmountForInput(payment.amount));
+    setEditingPaymentMethod(payment.method || "cash");
+  };
+
+  const handleCancelEditPayment = () => {
+    setEditingPaymentId(null);
+    setEditingPaymentAmount("");
+    setEditingPaymentMethod("cash");
+  };
+
+  const handleSaveEditPayment = async (visitId: string, paymentId: string) => {
+    const parsedAmount = parseAmountInput(editingPaymentAmount, false);
+    if (parsedAmount === null || parsedAmount <= 0) {
+      toast.error("Введите корректную сумму");
+      return;
+    }
+
+    const visit = visits.find((v) => v.id === visitId);
+    if (!visit) {
+      toast.error("Визит не найден");
+      return;
+    }
+
+    const updatedPayments = visit.payments?.map((p) =>
+      p.id === paymentId
+        ? { ...p, amount: parsedAmount, method: editingPaymentMethod }
+        : p
+    ) || [];
+
+    // Recalculate cashAmount and ewalletAmount
+    const cashTotal = updatedPayments
+      .filter((p) => p.method === "cash")
+      .reduce((sum, p) => sum + p.amount, 0);
+    const walletTotal = updatedPayments
+      .filter((p) => p.method === "ewallet")
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    const updatedVisit: Visit = {
+      ...visit,
+      payments: updatedPayments,
+      cashAmount: parseFloat(cashTotal.toFixed(2)),
+      ewalletAmount: parseFloat(walletTotal.toFixed(2)),
+    };
+
+    try {
+      await store.saveVisit(updatedVisit);
+      const updatedVisits = store
+        .getVisits()
+        .filter((v) => v.patientId === patient.id)
+        .sort(
+          (a, b) =>
+            new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+        );
+      setVisits(updatedVisits);
+
+      const updatedPatient = store.getPatients().find((p) => p.id === patient.id);
+      if (updatedPatient) {
+        updatedPatient.balance = store.calculatePatientBalance(patient.id);
+        await store.savePatient(updatedPatient);
+        setPatient(updatedPatient);
+      }
+
+      setEditingPaymentId(null);
+      setEditingPaymentAmount("");
+      setEditingPaymentMethod("cash");
+      setRefreshKey((prev) => prev + 1);
+      toast.success("Платеж обновлен");
+    } catch (error) {
+      console.error("Failed to update payment", error);
+      toast.error("Не удалось обновить платеж");
+    }
+  };
+
+  const handleDeletePayment = async (visitId: string, paymentId: string) => {
+    const visit = visits.find((v) => v.id === visitId);
+    if (!visit) {
+      toast.error("Визит не найден");
+      return;
+    }
+
+    const updatedPayments = visit.payments?.filter((p) => p.id !== paymentId) || [];
+
+    // Recalculate cashAmount and ewalletAmount
+    const cashTotal = updatedPayments
+      .filter((p) => p.method === "cash")
+      .reduce((sum, p) => sum + p.amount, 0);
+    const walletTotal = updatedPayments
+      .filter((p) => p.method === "ewallet")
+      .reduce((sum, p) => sum + p.amount, 0);
+
+    const updatedVisit: Visit = {
+      ...visit,
+      payments: updatedPayments,
+      cashAmount: parseFloat(cashTotal.toFixed(2)),
+      ewalletAmount: parseFloat(walletTotal.toFixed(2)),
+    };
+
+    try {
+      await store.saveVisit(updatedVisit);
+      const updatedVisits = store
+        .getVisits()
+        .filter((v) => v.patientId === patient.id)
+        .sort(
+          (a, b) =>
+            new Date(b.startTime).getTime() - new Date(a.startTime).getTime()
+        );
+      setVisits(updatedVisits);
+
+      const updatedPatient = store.getPatients().find((p) => p.id === patient.id);
+      if (updatedPatient) {
+        updatedPatient.balance = store.calculatePatientBalance(patient.id);
+        await store.savePatient(updatedPatient);
+        setPatient(updatedPatient);
+      }
+
+      setRefreshKey((prev) => prev + 1);
+      toast.success("Платеж удален");
+    } catch (error) {
+      console.error("Failed to delete payment", error);
+      toast.error("Не удалось удалить платеж");
+    }
+  };
+
+  const convertFileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === "string") {
+          resolve(reader.result);
+        } else {
+          reject(new Error("Failed to convert file to base64"));
+        }
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = e.target.files;
+    if (!selectedFiles || selectedFiles.length === 0) return;
+
+    try {
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const base64 = await convertFileToBase64(file);
+        
+        const patientFile: PatientFile = {
+          id: `file_${Date.now()}_${Math.random()}`,
+          patientId: patient.id,
+          name: file.name,
+          file: base64,
+          clinicId: store.getCurrentClinicId() || "",
+          uploadedAt: new Date().toISOString(),
+        };
+
+        await store.saveFile(patientFile);
+      }
+
+      const updatedFiles = store.getFiles().filter((f) => f.patientId === patient.id);
+      setFiles(updatedFiles);
+      toast.success(`Загружено файлов: ${selectedFiles.length}`);
+      e.target.value = ""; // Reset input
+    } catch (error) {
+      console.error("Failed to upload file", error);
+      toast.error("Не удалось загрузить файл");
+    }
+  };
+
+  const handleStartRenameFile = (file: PatientFile) => {
+    setEditingFileNameId(file.id);
+    setEditingFileName(file.name);
+  };
+
+  const handleCancelRenameFile = () => {
+    setEditingFileNameId(null);
+    setEditingFileName("");
+  };
+
+  const handleSaveRenameFile = async (fileId: string) => {
+    if (!editingFileName.trim()) {
+      toast.error("Введите название файла");
+      return;
+    }
+
+    const file = files.find((f) => f.id === fileId);
+    if (!file) {
+      toast.error("Файл не найден");
+      return;
+    }
+
+    try {
+      // Update file name by deleting old and saving with same ID
+      const clinicId = store.getCurrentClinicId();
+      if (!clinicId) {
+        toast.error("Не удалось определить клинику");
+        return;
+      }
+
+      // Get all files from storage
+      const allFiles = store.getFiles();
+      const fileIndex = allFiles.findIndex((f) => f.id === fileId);
+      
+      if (fileIndex >= 0) {
+        // Update the file name
+        const updatedFile: PatientFile = {
+          ...allFiles[fileIndex],
+          name: editingFileName.trim(),
+        };
+        
+        // Replace in storage
+        const updatedFiles = [...allFiles];
+        updatedFiles[fileIndex] = updatedFile;
+        
+        // Save to storage
+        const STORAGE_KEYS = {
+          FILES: "biyo_files",
+        };
+        localStorage.setItem(STORAGE_KEYS.FILES, JSON.stringify(updatedFiles));
+        window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'files' } }));
+        
+        const patientFiles = updatedFiles.filter((f) => f.patientId === patient.id);
+        setFiles(patientFiles);
+        
+        setEditingFileNameId(null);
+        setEditingFileName("");
+        toast.success("Название файла обновлено");
+      } else {
+        toast.error("Файл не найден в хранилище");
+      }
+    } catch (error) {
+      console.error("Failed to rename file", error);
+      toast.error("Не удалось переименовать файл");
+    }
+  };
+
+  const handleDeleteFile = async (fileId: string) => {
+    try {
+      store.deleteFile(fileId);
+      const updatedFiles = store.getFiles().filter((f) => f.patientId === patient.id);
+      setFiles(updatedFiles);
+      toast.success("Файл удален");
+    } catch (error) {
+      console.error("Failed to delete file", error);
+      toast.error("Не удалось удалить файл");
+    }
+  };
+
+  const handleViewFile = (file: PatientFile) => {
+    setViewingFile(file);
+  };
+
+  const getFileUrl = (file: PatientFile): string => {
+    if (typeof file.file === "string") {
+      return file.file; // Base64 data URL
+    }
+    return URL.createObjectURL(file.file);
+  };
+
+  const getFileType = (file: PatientFile): string => {
+    const name = file.name.toLowerCase();
+    if (name.match(/\.(jpg|jpeg|png|gif|webp|bmp)$/)) return "image";
+    if (name.match(/\.(pdf)$/)) return "pdf";
+    if (name.match(/\.(doc|docx)$/)) return "document";
+    return "file";
   };
 
   // Calculate summary data from current visits (will update when visits refresh)
@@ -1306,7 +1589,7 @@ export function PatientCard({
                       });
                     }
                     return (visit.services as VisitService[]).map((vs, idx) => {
-                      const service = services.find((s) => s.id === vs.serviceId);
+                        const service = services.find((s) => s.id === vs.serviceId);
                       const teethList =
                         vs.teeth && vs.teeth.length > 0
                           ? [...vs.teeth].sort((a, b) => a - b)
@@ -1317,7 +1600,7 @@ export function PatientCard({
                         quantity: vs.quantity || 1,
                         teeth: teethList,
                       };
-                    });
+                      });
                   })();
                   let computedStatus = visit.status;
                   const now = new Date();
@@ -1340,7 +1623,7 @@ export function PatientCard({
                         : "default";
                   const infoCards = [
                     {
-                      label: "Стоимость визита",
+                      label: "Общая стоимость",
                       value: `${visit.cost.toFixed(2)} смн`,
                       emphasize: false,
                     },
@@ -1401,7 +1684,7 @@ export function PatientCard({
                             >
                               {card.value}
                             </p>
-                          </div>
+                        </div>
                         ))}
                       </div>
 
@@ -1415,7 +1698,7 @@ export function PatientCard({
                               {renderedServices.length}
                             </Badge>
                           )}
-                        </div>
+                                  </div>
                         {renderedServices.length > 0 ? (
                           <div className="grid gap-2">
                             {renderedServices.map((service) => (
@@ -1426,7 +1709,7 @@ export function PatientCard({
                                 <div className="flex items-center justify-between gap-3">
                                   <span className="text-sm font-medium leading-tight">
                                     {service.name}
-                                  </span>
+                                    </span>
                                   {service.quantity > 1 && (
                                     <Badge
                                       variant="secondary"
@@ -1434,8 +1717,8 @@ export function PatientCard({
                                     >
                                       ×{service.quantity}
                                     </Badge>
-                                  )}
-                                </div>
+                            )}
+                          </div>
                                 {service.teeth && service.teeth.length > 0 && (
                                   <div className="mt-2 flex flex-wrap gap-1.5">
                                     {service.teeth.map((tooth) => (
@@ -1443,13 +1726,13 @@ export function PatientCard({
                                         key={`${service.key}-tooth-${tooth}`}
                                         variant="outline"
                                         className="font-mono text-xs"
-                                      >
+                              >
                                         {tooth}
                                       </Badge>
-                                    ))}
-                                  </div>
+                            ))}
+                          </div>
                                 )}
-                              </div>
+                        </div>
                             ))}
                           </div>
                         ) : (
@@ -1473,7 +1756,7 @@ export function PatientCard({
                       <div className="rounded-lg border bg-muted/20 p-3">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                           <Label className="text-sm font-medium">
-                            Стоимость визита
+                            Общая стоимость
                           </Label>
                           {costHasChanged && (
                             <Badge variant="outline" className="text-xs">
@@ -1494,7 +1777,7 @@ export function PatientCard({
                               }))
                             }
                             className="flex-1"
-                            placeholder="Введите стоимость визита"
+                            placeholder="Введите общую стоимость"
                           />
                           <Button
                             size="sm"
@@ -1521,20 +1804,20 @@ export function PatientCard({
                               <Label className="text-xs text-muted-foreground">
                                 Наличные
                               </Label>
-                              <Input
-                                type="number"
-                                step="0.01"
+                          <Input
+                            type="number"
+                            step="0.01"
                                 min="0"
                                 placeholder="0.00"
-                                value={
-                                  selectedVisitForPayment === visit.id
+                            value={
+                              selectedVisitForPayment === visit.id
                                     ? paymentCashAmount
-                                    : ""
-                                }
-                                onChange={(e) => {
+                                : ""
+                            }
+                            onChange={(e) => {
                                   setPaymentCashAmount(e.target.value);
-                                  setSelectedVisitForPayment(visit.id);
-                                }}
+                              setSelectedVisitForPayment(visit.id);
+                            }}
                               />
                             </div>
                             <div className="space-y-1.5">
@@ -1581,6 +1864,7 @@ export function PatientCard({
                             </Label>
                             <div className="space-y-1.5">
                               {visit.payments.map((payment) => {
+                                const isEditing = editingPaymentId === payment.id;
                                 const methodLabel =
                                   payment.method === "cash"
                                     ? "Наличные"
@@ -1598,17 +1882,88 @@ export function PatientCard({
                                     key={payment.id}
                                     className="flex items-center justify-between gap-2 rounded-md border border-border/60 bg-background/80 px-3 py-2"
                                   >
-                                    <div>
-                                      <p className="text-sm font-medium">
-                                        {payment.amount.toFixed(2)} смн
-                                      </p>
-                                      <p className="text-xs text-muted-foreground">
-                                        {format(new Date(payment.date), "dd.MM.yyyy")}
-                                      </p>
-                                    </div>
-                                    <Badge variant={methodVariant} className="text-xs">
-                                      {methodLabel}
-                                    </Badge>
+                                    {isEditing ? (
+                                      <div className="flex-1 space-y-2">
+                                        <div className="flex gap-2">
+                                          <Input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={editingPaymentAmount}
+                                            onChange={(e) => setEditingPaymentAmount(e.target.value)}
+                                            className="flex-1"
+                                            placeholder="Сумма"
+                                          />
+                                          <Select
+                                            value={editingPaymentMethod}
+                                            onValueChange={(value: "cash" | "ewallet") => setEditingPaymentMethod(value)}
+                                          >
+                                            <SelectTrigger className="w-[140px]">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              <SelectItem value="cash">Наличные</SelectItem>
+                                              <SelectItem value="ewallet">Электронный кошелёк</SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="flex gap-2">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handleCancelEditPayment()}
+                                            className="flex-1"
+                                          >
+                                            Отмена
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            onClick={() => handleSaveEditPayment(visit.id, payment.id)}
+                                            className="flex-1"
+                                            disabled={
+                                              parseAmountInput(editingPaymentAmount, false) === null ||
+                                              parseAmountInput(editingPaymentAmount, false)! <= 0
+                                            }
+                                          >
+                                            Сохранить
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="destructive"
+                                            onClick={() => {
+                                              if (confirm("Вы уверены, что хотите удалить этот платеж?")) {
+                                                handleDeletePayment(visit.id, payment.id);
+                                              }
+                                            }}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="flex-1">
+                                          <p className="text-sm font-medium">
+                                            {payment.amount.toFixed(2)} смн
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            {format(new Date(payment.date), "dd.MM.yyyy")}
+                                          </p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Badge variant={methodVariant} className="text-xs">
+                                            {methodLabel}
+                                          </Badge>
+                                          <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => handleStartEditPayment(payment)}
+                                          >
+                                            Редактировать
+                                          </Button>
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
                                 );
                               })}
@@ -1660,6 +2015,129 @@ export function PatientCard({
             </div>
           </div>
 
+          {/* Files Section */}
+          <div className="border-t pt-6">
+            <Label className="text-lg mb-4 block">Файлы</Label>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Input
+                  type="file"
+                  id="file-upload"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  multiple
+                  accept="*/*"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => document.getElementById("file-upload")?.click()}
+                  className="gap-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  Загрузить файлы
+                </Button>
+              </div>
+
+              {files.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Нет загруженных файлов</p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {files.map((file) => {
+                    const isEditing = editingFileNameId === file.id;
+                    const fileType = getFileType(file);
+                    return (
+                      <Card key={file.id} className="p-3">
+                        {isEditing ? (
+                          <div className="space-y-2">
+                            <Input
+                              value={editingFileName}
+                              onChange={(e) => setEditingFileName(e.target.value)}
+                              placeholder="Название файла"
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleSaveRenameFile(file.id);
+                                } else if (e.key === "Escape") {
+                                  handleCancelRenameFile();
+                                }
+                              }}
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCancelRenameFile()}
+                                className="flex-1"
+                              >
+                                Отмена
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleSaveRenameFile(file.id)}
+                                className="flex-1"
+                                disabled={!editingFileName.trim()}
+                              >
+                                Сохранить
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <File className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                  <p className="text-sm font-medium truncate" title={file.name}>
+                                    {file.name}
+                                  </p>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {format(new Date(file.uploadedAt), "dd.MM.yyyy", { locale: ru })}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleViewFile(file)}
+                                className="flex-1 gap-1"
+                              >
+                                <Eye className="h-3 w-3" />
+                                Просмотр
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleStartRenameFile(file)}
+                                className="gap-1"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  if (confirm("Вы уверены, что хотите удалить этот файл?")) {
+                                    handleDeleteFile(file.id);
+                                  }
+                                }}
+                                className="gap-1 text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Delete Button */}
           <div className="border-t pt-6">
             <Button
@@ -1673,6 +2151,71 @@ export function PatientCard({
           </div>
         </div>
       </DialogContent>
+
+      {/* File Viewer Dialog */}
+      <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{viewingFile?.name}</DialogTitle>
+          </DialogHeader>
+          {viewingFile && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Загружено: {format(new Date(viewingFile.uploadedAt), "dd.MM.yyyy HH:mm", { locale: ru })}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const url = getFileUrl(viewingFile);
+                    const link = document.createElement("a");
+                    link.href = url;
+                    link.download = viewingFile.name;
+                    link.target = "_blank";
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                >
+                  Скачать
+                </Button>
+              </div>
+              <div className="border rounded-lg overflow-hidden bg-muted/20">
+                {getFileType(viewingFile) === "image" ? (
+                  <img
+                    src={getFileUrl(viewingFile)}
+                    alt={viewingFile.name}
+                    className="w-full h-auto max-h-[70vh] object-contain"
+                  />
+                ) : getFileType(viewingFile) === "pdf" ? (
+                  <iframe
+                    src={getFileUrl(viewingFile)}
+                    className="w-full h-[70vh] border-0"
+                    title={viewingFile.name}
+                  />
+                ) : (
+                  <div className="p-8 text-center">
+                    <File className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Просмотр этого типа файла не поддерживается в браузере
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const url = getFileUrl(viewingFile);
+                        window.open(url, "_blank");
+                      }}
+                    >
+                      Открыть в новой вкладке
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

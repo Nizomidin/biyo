@@ -151,6 +151,7 @@ export interface User {
   id: string;
   email: string;
   password?: string; // Optional password field
+  phone?: string;
   clinicId: string;
   proficiency?: string;
   role: "admin" | "user";
@@ -163,6 +164,19 @@ export interface Clinic {
   createdAt: string;
 }
 
+export interface Subscription {
+  id: string;
+  clinicId: string;
+  plan: "start" | "growth" | "network";
+  period: "monthly" | "yearly";
+  startDate: string; // ISO date string
+  nextPaymentDate: string; // ISO date string
+  isActive: boolean;
+  createdAt: string;
+  isTrial?: boolean; // Whether this is a free trial
+  trialEndDate?: string; // ISO date string - when trial ends
+}
+
 const STORAGE_KEYS = {
   PATIENTS: "biyo_patients",
   DOCTORS: "biyo_doctors",
@@ -172,6 +186,7 @@ const STORAGE_KEYS = {
   USERS: "biyo_users",
   CLINICS: "biyo_clinics",
   CURRENT_USER: "biyo_current_user",
+  SUBSCRIPTIONS: "biyo_subscriptions",
 };
 
 // Helper functions
@@ -1012,6 +1027,61 @@ class Store {
 
   getAllUsers(): User[] {
     return getFromStorage<User>(STORAGE_KEYS.USERS, []);
+  }
+
+  // Subscriptions
+  getSubscription(clinicId?: string): Subscription | null {
+    const clinicIdToUse = clinicId || this.getCurrentClinicId();
+    if (!clinicIdToUse) return null;
+    
+    const subscriptions = getFromStorage<Subscription>(STORAGE_KEYS.SUBSCRIPTIONS, []);
+    const activeSubscription = subscriptions.find(
+      (s) => s.clinicId === clinicIdToUse && s.isActive
+    );
+    return activeSubscription || null;
+  }
+
+  getAllSubscriptions(clinicId?: string): Subscription[] {
+    const subscriptions = getFromStorage<Subscription>(STORAGE_KEYS.SUBSCRIPTIONS, []);
+    const filterClinicId = clinicId || this.getCurrentClinicId();
+    if (filterClinicId) {
+      return subscriptions.filter((s) => s.clinicId === filterClinicId);
+    }
+    return subscriptions;
+  }
+
+  async saveSubscription(subscription: Subscription): Promise<void> {
+    const clinicId = subscription.clinicId || this.getCurrentClinicId();
+    if (!clinicId) {
+      throw new Error("No clinic ID available. Please log in.");
+    }
+
+    const allSubscriptions = getFromStorage<Subscription>(STORAGE_KEYS.SUBSCRIPTIONS, []);
+    
+    // If this subscription is being set as active, deactivate all other subscriptions for this clinic
+    if (subscription.isActive) {
+      allSubscriptions.forEach((s) => {
+        if (s.clinicId === clinicId && s.id !== subscription.id) {
+          s.isActive = false;
+        }
+      });
+    }
+
+    const index = allSubscriptions.findIndex((s) => s.id === subscription.id);
+    if (index >= 0) {
+      allSubscriptions[index] = subscription;
+    } else {
+      allSubscriptions.push(subscription);
+    }
+    
+    saveToStorage(STORAGE_KEYS.SUBSCRIPTIONS, allSubscriptions);
+    window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'subscriptions' } }));
+    
+    // Sync to API in background
+    runApiSync(async (client) => {
+      // Note: API endpoint would need to be added
+      // await client.saveSubscription(subscription);
+    }, 'saveSubscription');
   }
 
   // Migration: Assign clinicId to existing data without it

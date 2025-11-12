@@ -41,6 +41,7 @@ class UserPayload(BaseModel):
     id: Optional[str] = None
     email: EmailStr
     password: Optional[str] = None
+    phone: Optional[str] = None
     clinicId: str
     proficiency: Optional[str] = None
     role: str = "user"
@@ -50,6 +51,7 @@ class UserPayload(BaseModel):
 class UserResponse(ORMModel):
     id: str
     email: EmailStr
+    phone: Optional[str]
     clinic_id: str
     proficiency: Optional[str]
     role: str

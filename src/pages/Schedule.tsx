@@ -254,7 +254,7 @@ const Schedule = () => {
     const now = new Date();
     const dayStart = startOfDay(selectedDate);
     const dayEnd = addDays(dayStart, 1);
-
+    
     // Get list of visible doctor IDs
     const visibleDoctorIds = doctors.map((d) => d.id);
 
@@ -553,7 +553,7 @@ const Schedule = () => {
                   : "Врач не найден. Обратитесь к администратору для создания вашего профиля врача."}
               </p>
               {currentUser?.role === "admin" && (
-                <Button onClick={() => setIsAddDoctorOpen(true)}>
+                <Button onClick={() => setIsAddDoctorOpen(true)} data-tour="add-doctor">
                   Добавить врача
                 </Button>
               )}
@@ -654,6 +654,7 @@ const Schedule = () => {
                           onDragOver={(e) => handleDragOver(e, doctor.id, time)}
                           onDragLeave={handleDragLeave}
                           onDrop={(e) => handleDrop(e, doctor.id, time)}
+                          data-tour="calendar-slot"
                         >
                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                           <Plus className="h-4 w-4 text-muted-foreground" />
@@ -1064,6 +1065,12 @@ function AppointmentDialog({
     }
     return [];
   });
+  const [totalPrice, setTotalPrice] = useState(() => {
+    if (appointment) {
+      return formatAmountForInput(appointment.cost);
+    }
+    return "";
+  });
   const [cashAmount, setCashAmount] = useState(() => {
     if (appointment) {
       if (appointment.cashAmount !== undefined) {
@@ -1072,9 +1079,6 @@ function AppointmentDialog({
       const cashPayment = appointment.payments?.find((payment) => payment.method === "cash");
       if (cashPayment) {
         return formatAmountForInput(cashPayment.amount);
-      }
-      if (appointment.cost) {
-        return formatAmountForInput(appointment.cost);
       }
     }
     return "";
@@ -1091,7 +1095,7 @@ function AppointmentDialog({
     }
     return "";
   });
-  const totalCost = useMemo(() => {
+  const totalPaid = useMemo(() => {
     const cash = parseMoney(cashAmount);
     const wallet = parseMoney(ewalletAmount);
     return parseFloat((cash + wallet).toFixed(2));
@@ -1185,6 +1189,7 @@ function AppointmentDialog({
         }
         const cashPayment = appointment.payments?.find((payment) => payment.method === "cash");
         const walletPayment = appointment.payments?.find((payment) => payment.method === "ewallet");
+        setTotalPrice(formatAmountForInput(appointment.cost));
         setCashAmount(() => {
           if (appointment.cashAmount !== undefined) {
             return formatAmountForInput(appointment.cashAmount);
@@ -1192,7 +1197,7 @@ function AppointmentDialog({
           if (cashPayment) {
             return formatAmountForInput(cashPayment.amount);
           }
-          return formatAmountForInput(appointment.cost);
+          return "";
         });
         setEwalletAmount(() => {
           if (appointment.ewalletAmount !== undefined) {
@@ -1216,34 +1221,34 @@ function AppointmentDialog({
       setStartTime(slotTime);
       setEndTime(addMinutes(slotTime, 30));
       setDuration(30); // Default 30 minutes
-      setSelectedServices([]);
-      setTeeth([]);
-      setCashAmount("");
-      setEwalletAmount("");
-      setNotes("");
-      setIsLoading(false);
+        setSelectedServices([]);
+        setTeeth([]);
+        setTotalPrice("");
+        setCashAmount("");
+        setEwalletAmount("");
+        setNotes("");
+        setIsLoading(false);
     }
     // Use more specific dependencies to prevent infinite loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appointment?.id, open, selectedSlot?.doctorId, selectedSlot?.time]);
 
-  // Auto-fill payment amounts when services are selected (only if amounts are empty and not editing)
+  // Auto-fill total price when services are selected (only if total price is empty and not editing)
   useEffect(() => {
     if (
       selectedServices.length > 0 &&
       !appointment &&
-      !cashAmount &&
-      !ewalletAmount
+      !totalPrice
     ) {
       const defaultTotal = selectedServices.reduce((sum, vs) => {
         const service = services.find((s) => s.id === vs.serviceId);
         return sum + (service?.defaultPrice || 0) * vs.quantity;
       }, 0);
       if (defaultTotal > 0) {
-        setCashAmount(formatAmountForInput(defaultTotal));
+        setTotalPrice(formatAmountForInput(defaultTotal));
       }
     }
-  }, [selectedServices, appointment, cashAmount, ewalletAmount, services]);
+  }, [selectedServices, appointment, totalPrice, services]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1309,9 +1314,9 @@ function AppointmentDialog({
     });
 
     const visitId = appointment?.id || `visit_${Date.now()}_${Math.random()}`;
+    const totalPriceValue = parseMoney(totalPrice);
     const cash = parseMoney(cashAmount);
     const wallet = parseMoney(ewalletAmount);
-    const combinedCost = parseFloat((cash + wallet).toFixed(2));
     const nowIso = new Date().toISOString();
     const existingCashPayment = appointment?.payments?.find((payment) => payment.method === "cash");
     const existingWalletPayment = appointment?.payments?.find((payment) => payment.method === "ewallet");
@@ -1345,7 +1350,7 @@ function AppointmentDialog({
       startTime: startDateTime.toISOString(),
       endTime: endDateTime.toISOString(),
       services: servicesWithTeeth,
-      cost: combinedCost,
+      cost: totalPriceValue,
       notes,
       status: appointment?.status || "scheduled",
       payments,
@@ -1797,39 +1802,75 @@ function AppointmentDialog({
             )}
           </div>
 
-          <div className="space-y-3">
-            <Label>Оплата</Label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="payment-cash" className="text-xs text-muted-foreground">
-                  Наличные
+          <div className="space-y-4">
+            <div className="space-y-3 border-b pb-4">
+              <div className="space-y-2">
+                <Label htmlFor="total-price" className="text-sm font-medium">
+                  Общая стоимость визита <span className="text-destructive">*</span>
                 </Label>
+                <p className="text-xs text-muted-foreground">
+                  Введите общую стоимость всех услуг за этот визит
+                </p>
                 <Input
-                  id="payment-cash"
+                  id="total-price"
                   type="number"
                   step="0.01"
                   min="0"
-                  value={cashAmount}
-                  onChange={(e) => setCashAmount(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="payment-ewallet" className="text-xs text-muted-foreground">
-                  Электронный кошелёк
-                </Label>
-                <Input
-                  id="payment-ewallet"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={ewalletAmount}
-                  onChange={(e) => setEwalletAmount(e.target.value)}
+                  value={totalPrice}
+                  onChange={(e) => setTotalPrice(e.target.value)}
+                  placeholder="Введите общую стоимость"
+                  className="text-base"
                 />
               </div>
             </div>
-            <div className="flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">Итого</span>
-              <span className="font-medium">{totalCost.toFixed(2)} смн</span>
+            
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">Оплата</Label>
+              <p className="text-xs text-muted-foreground">
+                Укажите, сколько уже было оплачено по этому визиту (если оплата уже была произведена)
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="payment-cash" className="text-xs font-medium">
+                    Наличные
+                  </Label>
+                  <Input
+                    id="payment-cash"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={cashAmount}
+                    onChange={(e) => setCashAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="payment-ewallet" className="text-xs font-medium">
+                    Электронный кошелёк
+                  </Label>
+                  <Input
+                    id="payment-ewallet"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={ewalletAmount}
+                    onChange={(e) => setEwalletAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-md border border-border bg-secondary/40 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Всего оплачено</span>
+                <span className="font-medium">{totalPaid.toFixed(2)} смн</span>
+              </div>
+              {totalPrice && (
+                <div className="flex items-center justify-between rounded-md border border-border bg-muted/30 px-3 py-2 text-sm">
+                  <span className="text-muted-foreground">Остаток к оплате</span>
+                  <span className={`font-medium ${parseMoney(totalPrice) - totalPaid > 0 ? "text-orange-500" : ""}`}>
+                    {(parseMoney(totalPrice) - totalPaid).toFixed(2)} смн
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

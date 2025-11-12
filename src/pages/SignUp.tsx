@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { store, User, Clinic, Doctor } from "@/lib/store";
+import { store, User, Clinic, Doctor, Subscription } from "@/lib/store";
+import { parseISO } from "date-fns";
 import { toast } from "sonner";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, ArrowLeft } from "lucide-react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { ArrowRight, ArrowLeft, ChevronDown } from "lucide-react";
 
 const SignUp = () => {
   const [searchParams] = useSearchParams();
@@ -22,9 +23,11 @@ const SignUp = () => {
   }, [searchParams]);
   const [clinicName, setClinicName] = useState("");
   const [proficiency, setProficiency] = useState("");
+  const [phone, setPhone] = useState("+992 ");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [clinicExists, setClinicExists] = useState<boolean | null>(null);
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const navigate = useNavigate();
 
   // Check if clinic exists as user types
@@ -40,10 +43,107 @@ const SignUp = () => {
     }
   }, [clinicName]);
 
+  // Check email as user types
   useEffect(() => {
+    const checkEmail = async () => {
+      if (!email || email.length < 3) return;
+      
+      // Basic email format check
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) return;
+      
+      setIsCheckingEmail(true);
+      try {
+        await store.fetchAllUsersFromAPI();
+        const existingUser = store.getUserByEmail(email);
+        if (existingUser) {
+          toast.info("Аккаунт с таким email уже существует. Переход на страницу входа...");
+          setTimeout(() => {
+            navigate("/login");
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Failed to check email:', error);
+      } finally {
+        setIsCheckingEmail(false);
+      }
+    };
+
+    const timeoutId = setTimeout(checkEmail, 1000); // Debounce for 1 second
+    
+    return () => clearTimeout(timeoutId);
+  }, [email, navigate]);
+
+  useEffect(() => {
+    // Scroll to top when component mounts
+    window.scrollTo(0, 0);
+    
     store.fetchClinicsFromAPI().catch((error) => console.error('Failed to prefetch clinics:', error));
     store.fetchAllUsersFromAPI().catch((error) => console.error('Failed to prefetch users:', error));
+    
+    // Force light mode for sign-up page
+    document.documentElement.classList.remove('dark');
+    document.body.classList.remove('dark');
+    
+    // Auto scroll down when inputs are focused
+    const handleFocus = (e: FocusEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' && target.closest('#signup-form')) {
+        setTimeout(() => {
+          const formElement = document.getElementById('signup-form');
+          if (formElement) {
+            const headerOffset = 80;
+            const elementPosition = formElement.getBoundingClientRect().top;
+            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+            
+            window.scrollTo({
+              top: offsetPosition,
+              behavior: 'smooth'
+            });
+          }
+        }, 100);
+      }
+    };
+    
+    document.addEventListener('focusin', handleFocus);
+    
+    return () => {
+      document.removeEventListener('focusin', handleFocus);
+    };
   }, []);
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let value = e.target.value;
+    
+    // Remove all non-digit characters except + at the start
+    const digitsOnly = value.replace(/[^\d\+]/g, "");
+    
+    // If user tries to delete +992, prevent it
+    if (!digitsOnly.startsWith("+992") && digitsOnly.length > 0) {
+      // If they're typing, ensure +992 prefix
+      if (digitsOnly.startsWith("992")) {
+        value = "+" + digitsOnly;
+      } else if (!digitsOnly.startsWith("+")) {
+        value = "+992 " + digitsOnly.replace(/^992/, "");
+      } else {
+        value = "+992 " + digitsOnly.replace(/^\+992/, "");
+      }
+    } else if (digitsOnly.startsWith("+992")) {
+      // Format: +992 XX XXX XXXX
+      const numberPart = digitsOnly.substring(4); // Remove +992
+      if (numberPart.length <= 2) {
+        value = "+992 " + numberPart;
+      } else if (numberPart.length <= 5) {
+        value = "+992 " + numberPart.substring(0, 2) + " " + numberPart.substring(2);
+      } else {
+        value = "+992 " + numberPart.substring(0, 2) + " " + numberPart.substring(2, 5) + " " + numberPart.substring(5, 9);
+      }
+    } else {
+      value = "+992 ";
+    }
+    
+    setPhone(value);
+  };
 
   const handleStep1 = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,12 +151,30 @@ const SignUp = () => {
       toast.error("Введите email");
       return;
     }
+    
+    // Check if user already exists
+    await store.fetchAllUsersFromAPI();
+    const existingUser = store.getUserByEmail(email);
+    if (existingUser) {
+      toast.info("Аккаунт с таким email уже существует. Переход на страницу входа...");
+      setTimeout(() => {
+        navigate("/login");
+      }, 500);
+      return;
+    }
+    
     if (!clinicName) {
       toast.error("Введите название клиники");
       return;
     }
     if (!proficiency) {
       toast.error("Введите вашу специализацию");
+      return;
+    }
+    // Validate phone number - should be +992 followed by at least 9 digits
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (!phone.trim() || phone.trim() === "+992" || phoneDigits.length < 12) {
+      toast.error("Введите полный номер телефона");
       return;
     }
     
@@ -93,9 +211,13 @@ const SignUp = () => {
     ]);
 
     // Check if user already exists
-    if (store.getUserByEmail(email)) {
-      toast.error("Пользователь с таким email уже существует");
+    const existingUser = store.getUserByEmail(email);
+    if (existingUser) {
+      toast.info("Аккаунт с таким email уже существует. Переход на страницу входа...");
       setIsLoading(false);
+      setTimeout(() => {
+        navigate("/login");
+      }, 500);
       return;
     }
 
@@ -130,6 +252,7 @@ const SignUp = () => {
     const user: User = {
       id: `user_${Date.now()}_${Math.random()}`,
       email,
+      phone: phone.trim(),
       clinicId: clinic.id,
       proficiency,
       role: isAdmin ? "admin" : "user",
@@ -138,6 +261,31 @@ const SignUp = () => {
 
     await store.saveUser(user);
     store.setCurrentUser(user);
+    
+    // Initialize default subscription if none exists (free trial, monthly, start plan for 1 doctor)
+    const existingSubscription = store.getSubscription(user.clinicId);
+    if (!existingSubscription) {
+      const accountCreatedDate = parseISO(user.createdAt);
+      const trialEndDate = new Date(accountCreatedDate);
+      trialEndDate.setDate(trialEndDate.getDate() + 14); // Trial ends 14 days from account creation
+      
+      const nextPaymentDate = new Date(trialEndDate); // Payment due when trial ends
+      
+      const defaultSubscription: Subscription = {
+        id: `subscription_${Date.now()}`,
+        clinicId: user.clinicId,
+        plan: "start" as const,
+        period: "monthly" as const,
+        startDate: accountCreatedDate.toISOString(),
+        nextPaymentDate: nextPaymentDate.toISOString(),
+        isActive: true,
+        createdAt: accountCreatedDate.toISOString(),
+        isTrial: true,
+        trialEndDate: trialEndDate.toISOString(),
+      };
+      
+      await store.saveSubscription(defaultSubscription);
+    }
     
     // If user is not admin, create a doctor profile for them
     if (!isAdmin) {
@@ -161,18 +309,145 @@ const SignUp = () => {
     await store.initializeDefaultServices();
     
     toast.success("Регистрация успешна");
-    navigate("/");
     setIsLoading(false);
+    
+    // Small delay to ensure state propagates before navigation
+    setTimeout(() => {
+      navigate("/", { replace: true });
+    }, 100);
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8">
-        <div className="space-y-6">
-          <div className="text-center">
-            <h1 className="text-3xl font-bold mb-2">БИ Biyo</h1>
-            <p className="text-muted-foreground">Регистрация</p>
+    <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 flex flex-col lg:flex-row relative">
+      {/* Force light mode */}
+      <style>{`
+        html, body {
+          background-color: #ecfdf5 !important;
+          color: #0f172a !important;
+          overflow-x: hidden;
+        }
+        .dark {
+          display: none !important;
+        }
+      `}</style>
+      
+      <Button
+        variant="ghost"
+        onClick={() => navigate("/")}
+        className="absolute top-4 left-4 gap-2 z-10"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Назад
+      </Button>
+
+      {/* Mobile: Show left content at top */}
+      <div className="lg:hidden w-full px-6 pt-20 pb-6 bg-gradient-to-br from-emerald-50 to-teal-50">
+        <div className="space-y-4 text-center max-w-md mx-auto">
+          <div className="flex justify-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-200/60 shadow-sm">
+              <img
+                src="/ser.png"
+                alt="Serkor"
+                className="h-full w-full rounded-full object-cover"
+              />
+            </div>
           </div>
+          <h2 className="text-2xl font-bold text-slate-900 leading-tight">
+            <span className="block">Используйте <span className="text-emerald-600">Serkor</span></span>
+            <span className="block"><span className="text-emerald-600">бесплатно</span> 2 недели</span>
+          </h2>
+          <p className="text-base text-slate-700 leading-relaxed">
+            <span className="block">После этого мы свяжемся с вами</span>
+            <span className="block">и продолжим с платной версией, если вы захотите</span>
+          </p>
+          <div className="pt-2">
+            <a
+              href="/#pricing"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('/');
+                setTimeout(() => {
+                  const pricingElement = document.getElementById('pricing');
+                  if (pricingElement) {
+                    const headerOffset = 80;
+                    const elementPosition = pricingElement.getBoundingClientRect().top;
+                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+                    
+                    window.scrollTo({
+                      top: offsetPosition,
+                      behavior: 'smooth'
+                    });
+                  }
+                }, 100);
+              }}
+              className="text-sm text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
+            >
+              посмотреть цены
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Left Side Content - Desktop */}
+      <div className="hidden lg:flex lg:w-1/2 flex-col justify-center px-12 xl:px-16 bg-gradient-to-br from-emerald-50 to-teal-50">
+        <div className="max-w-md space-y-10">
+          <div className="flex justify-center mb-6">
+            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-200/60 shadow-sm">
+              <img
+                src="/ser.png"
+                alt="Serkor"
+                className="h-full w-full rounded-full object-cover"
+              />
+            </div>
+          </div>
+          <div className="space-y-8">
+            <h2 className="text-6xl font-bold text-slate-900 leading-tight">
+              <span className="block whitespace-nowrap">Используйте <span className="text-emerald-600">Serkor</span></span>
+              <span className="block whitespace-nowrap"><span className="text-emerald-600">бесплатно</span> 2 недели</span>
+            </h2>
+            <p className="text-3xl text-slate-700 leading-relaxed">
+              <span className="block whitespace-nowrap">После этого мы свяжемся с вами</span>
+              <span className="block whitespace-nowrap">и продолжим с платной версией, если вы захотите</span>
+            </p>
+          </div>
+          <div className="pt-6">
+            <a
+              href="/#pricing"
+              onClick={(e) => {
+                e.preventDefault();
+                navigate('/');
+                setTimeout(() => {
+                  const pricingElement = document.getElementById('pricing');
+                  if (pricingElement) {
+                    const headerOffset = 80;
+                    const elementPosition = pricingElement.getBoundingClientRect().top;
+                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+                    
+                    window.scrollTo({
+                      top: offsetPosition,
+                      behavior: 'smooth'
+                    });
+                  }
+                }, 100);
+              }}
+              className="text-lg text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
+            >
+              посмотреть цены
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Side - Sign Up Card */}
+      <div id="signup-form" className="w-full lg:w-1/2 flex items-center justify-start p-4 lg:pl-8 lg:pr-16 pt-8 lg:pt-0">
+        <Card className="w-full max-w-md p-8 bg-white">
+          <div className="space-y-6">
+            <div className="text-center">
+              <h1 className="text-3xl font-bold mb-2">
+                <span className="text-emerald-600">Serkor</span>
+              </h1>
+              <p className="text-slate-900">Регистрация</p>
+            </div>
 
           {step === 1 ? (
             <form onSubmit={handleStep1} className="space-y-4">
@@ -186,7 +461,12 @@ const SignUp = () => {
                   placeholder="your@email.com"
                   required
                   autoFocus
+                  className="bg-white h-12 text-base text-slate-900 placeholder:text-slate-400"
+                  disabled={isCheckingEmail}
                 />
+                {isCheckingEmail && (
+                  <p className="text-xs text-muted-foreground">Проверка...</p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -197,6 +477,7 @@ const SignUp = () => {
                   onChange={(e) => setClinicName(e.target.value)}
                   placeholder="Название вашей клиники"
                   required
+                  className="bg-white h-12 text-base text-slate-900 placeholder:text-slate-400"
                 />
                 {clinicExists !== null && clinicName.trim().length > 0 && (
                   <p className={`text-xs flex items-center gap-1 ${
@@ -227,7 +508,27 @@ const SignUp = () => {
                   onChange={(e) => setProficiency(e.target.value)}
                   placeholder="Ваша специализация"
                   required
+                  className="bg-white h-12 text-base text-slate-900 placeholder:text-slate-400"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">Номер телефона</Label>
+                <div className="flex items-center gap-2">
+                  <span className="text-base text-slate-900 font-medium">+992</span>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={phone.replace(/^\+992\s*/, "")}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setPhone("+992 " + value.replace(/^\+992\s*/, ""));
+                    }}
+                    placeholder="93 123 4567"
+                    required
+                    className="bg-white h-12 text-base text-slate-900 placeholder:text-slate-400 flex-1"
+                  />
+                </div>
               </div>
 
               <Button type="submit" className="w-full">
@@ -247,6 +548,10 @@ const SignUp = () => {
               <div className="space-y-2">
                 <Label>Специализация</Label>
                 <p className="text-sm text-muted-foreground">{proficiency}</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Номер телефона</Label>
+                <p className="text-sm text-muted-foreground">{phone}</p>
               </div>
 
               {(() => {
@@ -323,6 +628,8 @@ const SignUp = () => {
           </div>
         </div>
       </Card>
+      </div>
+
     </div>
   );
 };

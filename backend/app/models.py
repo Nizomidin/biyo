@@ -38,6 +38,7 @@ class User(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     clinic_id: Mapped[str] = mapped_column(ForeignKey("clinics.id", ondelete="CASCADE"))
     proficiency: Mapped[Optional[str]] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(32), default="user")

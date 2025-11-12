@@ -1,13 +1,28 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+import random
+import string
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
 
 from .. import models, schemas
 from ..deps import get_db_session
 from ..router_utils import get_clinic
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+# In-memory OTP storage (in production, use Redis or database)
+otp_storage: dict[str, dict[str, str | datetime]] = {}
+
+
+class OTPRequest(BaseModel):
+    phone: str
+
+
+class OTPVerify(BaseModel):
+    phone: str
+    otp: str
 
 
 @router.get("/", response_model=list[schemas.UserResponse])
@@ -46,6 +61,7 @@ def upsert_user(payload: schemas.UserPayload, db: Session = Depends(get_db_sessi
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User already exists")
             user.email = payload.email
             user.password = payload.password
+            user.phone = payload.phone
             user.proficiency = payload.proficiency
             user.role = payload.role
             user.clinic_id = clinic.id
@@ -59,6 +75,7 @@ def upsert_user(payload: schemas.UserPayload, db: Session = Depends(get_db_sessi
         id=payload.id or schemas.create_id("user"),
         email=payload.email,
         password=payload.password,
+        phone=payload.phone,
         clinic_id=clinic.id,
         proficiency=payload.proficiency,
         role=payload.role,
@@ -67,4 +84,57 @@ def upsert_user(payload: schemas.UserPayload, db: Session = Depends(get_db_sessi
     db.add(user)
     db.flush()
     return user
+
+
+@router.post("/otp/send")
+def send_otp(request: OTPRequest) -> dict[str, str]:
+    """Send OTP to mobile number"""
+    phone = request.phone.strip()
+    
+    if not phone:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone number is required")
+    
+    # Generate 6-digit OTP
+    otp = ''.join(random.choices(string.digits, k=6))
+    
+    # Store OTP with expiration (5 minutes)
+    otp_storage[phone] = {
+        "otp": otp,
+        "expires_at": datetime.utcnow() + timedelta(minutes=5)
+    }
+    
+    # In production, integrate with SMS service (Twilio, AWS SNS, etc.)
+    # For now, we'll return it in the response (remove this in production!)
+    print(f"OTP for {phone}: {otp}")  # Remove in production
+    
+    return {
+        "message": "OTP sent successfully",
+        "otp": otp  # Remove this in production - only for testing
+    }
+
+
+@router.post("/otp/verify")
+def verify_otp(request: OTPVerify) -> dict[str, bool]:
+    """Verify OTP"""
+    phone = request.phone.strip()
+    otp = request.otp.strip()
+    
+    if phone not in otp_storage:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP not found or expired")
+    
+    stored_data = otp_storage[phone]
+    
+    # Check expiration
+    if datetime.utcnow() > stored_data["expires_at"]:
+        del otp_storage[phone]
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OTP expired")
+    
+    # Verify OTP
+    if stored_data["otp"] != otp:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid OTP")
+    
+    # OTP verified successfully - remove it
+    del otp_storage[phone]
+    
+    return {"verified": True}
 

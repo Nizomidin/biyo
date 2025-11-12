@@ -8,8 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { store } from "@/lib/store";
 import { toast } from "sonner";
 import { LogOut, Database, Users, Calendar, DollarSign, TrendingUp, TrendingDown, Building2, Activity } from "lucide-react";
-import { format, parseISO, startOfDay, endOfDay, startOfWeek, endOfWeek, isWithinInterval, eachDayOfInterval, subDays, subWeeks } from "date-fns";
+import { format, parseISO, startOfDay, endOfDay, startOfWeek, endOfWeek, isWithinInterval, eachDayOfInterval, subDays, subWeeks, addMonths, addYears } from "date-fns";
 import { ru } from "date-fns/locale";
+import { Badge } from "@/components/ui/badge";
+import { Check } from "lucide-react";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 
 const Profile = () => {
@@ -24,6 +26,9 @@ const Profile = () => {
   const [clinicName, setClinicName] = useState(clinic?.name || "");
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Get current subscription
+  const currentSubscription = store.getSubscription();
 
   useEffect(() => {
     const user = store.getCurrentUser();
@@ -70,7 +75,7 @@ const Profile = () => {
                 id: currentUser.clinicId || `clinic_${Date.now()}`,
                 name: trimmedClinicName,
                 createdAt: clinic?.createdAt || new Date().toISOString(),
-              };
+        };
           await store.saveClinic(clinicToSave);
           updatedClinic = clinicToSave;
         }
@@ -279,8 +284,9 @@ const Profile = () => {
 
         {isSuperAdmin ? (
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="profile">Профиль</TabsTrigger>
+              <TabsTrigger value="tariff">Тариф</TabsTrigger>
               <TabsTrigger value="data">Данные</TabsTrigger>
             </TabsList>
             
@@ -450,6 +456,177 @@ const Profile = () => {
                     <LogOut className="h-4 w-4" />
                     Выйти
                   </Button>
+                </div>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="tariff" className="space-y-6">
+              {/* Trial Status Banner */}
+              {currentSubscription?.isTrial && (
+                <Card className="p-6 bg-blue-50 border-blue-200">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-blue-900 mb-1">
+                        Бесплатный пробный период активен
+                      </h3>
+                      {currentSubscription.trialEndDate && (() => {
+                        const trialEnd = parseISO(currentSubscription.trialEndDate);
+                        const today = new Date();
+                        const daysRemaining = Math.ceil((trialEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                        return (
+                          <p className="text-sm text-blue-700">
+                            Пробный период заканчивается через {daysRemaining} {daysRemaining === 1 ? 'день' : daysRemaining < 5 ? 'дня' : 'дней'} ({format(trialEnd, "d MMMM yyyy", { locale: ru })})
+                          </p>
+                        );
+                      })()}
+                    </div>
+                    <Button 
+                      onClick={() => {
+                        // You can add contact functionality here, e.g., open email or contact form
+                        window.location.href = 'mailto:support@serkor.com?subject=Вопрос о тарифном плане';
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      Связаться с нами
+                    </Button>
+                  </div>
+                </Card>
+              )}
+              
+              <Card className="p-6">
+                <h2 className="text-2xl font-bold mb-6">Тарифные планы</h2>
+                <div className="grid gap-6 md:grid-cols-3">
+                  {[
+                    {
+                      name: "Старт",
+                      plan: "start" as const,
+                      subtitle: "Для соло-врачей",
+                      bullets: [
+                        "1 клиника · 1 врач",
+                        "Полный функционал: расписание, пациенты, аналитика",
+                        "Управление оплатами и долгами",
+                      ],
+                      monthlyPrice: "199 смн / месяц",
+                      yearlyPrice: "1 990 смн / год",
+                    },
+                    {
+                      name: "Рост",
+                      plan: "growth" as const,
+                      subtitle: "1 клиника · 2–10 врачей",
+                      bullets: [
+                        "Синхронизация аккаунтов врачей и общее расписание",
+                        "Администратор + аналитика по команде",
+                        "Бесплатный перенос данных из старой CRM",
+                      ],
+                      monthlyPrice: "150 смн за врача / месяц",
+                      yearlyPrice: "1 500 смн за врача / год",
+                    },
+                    {
+                      name: "Сеть",
+                      plan: "network" as const,
+                      subtitle: "Для сетей и франшиз",
+                      bullets: [
+                        "Несколько филиалов",
+                        "Единый финансовый контур",
+                        "API и кастомные интеграции",
+                      ],
+                      monthlyPrice: "Связаться с командой",
+                      yearlyPrice: "",
+                    },
+                  ].map((planInfo) => {
+                    const isActive = currentSubscription?.plan === planInfo.plan && currentSubscription?.isActive;
+                    const isTrial = isActive && currentSubscription?.isTrial;
+                    const nextPaymentDate = isActive && currentSubscription?.nextPaymentDate
+                      ? format(parseISO(currentSubscription.nextPaymentDate), "d MMMM yyyy", { locale: ru })
+                      : null;
+                    const trialEndDate = isTrial && currentSubscription?.trialEndDate
+                      ? format(parseISO(currentSubscription.trialEndDate), "d MMMM yyyy", { locale: ru })
+                      : null;
+                    
+                    return (
+                      <Card
+                        key={planInfo.plan}
+                        className={`p-6 relative ${
+                          isActive
+                            ? "border-2 border-emerald-500 bg-emerald-50/50"
+                            : "border"
+                        }`}
+                      >
+                        {isActive && (
+                          <Badge className={`absolute top-4 right-4 ${isTrial ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+                            <Check className="h-3 w-3 mr-1" />
+                            {isTrial ? 'Пробный период' : 'Активен'}
+                          </Badge>
+                        )}
+                        <div className="space-y-4">
+                          <div>
+                            <h3 className="text-xl font-bold">{planInfo.name}</h3>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {planInfo.subtitle}
+                            </p>
+                          </div>
+                          <ul className="space-y-2">
+                            {planInfo.bullets.map((bullet, idx) => (
+                              <li key={idx} className="flex items-start gap-2 text-sm">
+                                <Check className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />
+                                <span>{bullet}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          <div className="pt-4 border-t space-y-2">
+                            {planInfo.plan === "network" ? (
+                              <p className="text-sm font-medium text-center">
+                                {planInfo.monthlyPrice}
+                              </p>
+                            ) : (
+                              <>
+                                <div className="text-center">
+                                  <p className="text-lg font-bold">
+                                    {planInfo.monthlyPrice}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    или {planInfo.yearlyPrice}
+                                  </p>
+                                </div>
+                                {isActive && (
+                                  <div className="pt-2 border-t">
+                                    {isTrial ? (
+                                      <>
+                                        <p className="text-xs font-medium text-blue-600 text-center">
+                                          Бесплатный пробный период
+                                        </p>
+                                        {trialEndDate && (
+                                          <p className="text-xs text-muted-foreground text-center mt-1">
+                                            Пробный период до: {trialEndDate}
+                                          </p>
+                                        )}
+                                        {nextPaymentDate && (
+                                          <p className="text-xs font-medium text-center mt-1">
+                                            Платеж после пробного периода: {nextPaymentDate}
+                                          </p>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <p className="text-xs text-muted-foreground text-center">
+                                          Период: {currentSubscription?.period === "yearly" ? "Годовой" : "Месячный"}
+                                        </p>
+                                        {nextPaymentDate && (
+                                          <p className="text-xs font-medium text-center mt-1">
+                                            Следующий платеж: {nextPaymentDate}
+                                          </p>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
                 </div>
               </Card>
             </TabsContent>
@@ -786,7 +963,13 @@ const Profile = () => {
             </TabsContent>
           </Tabs>
         ) : (
-          <>
+          <Tabs defaultValue="profile" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="profile">Профиль</TabsTrigger>
+              <TabsTrigger value="tariff">Тариф</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="profile" className="space-y-6">
             <Card className="p-6 space-y-6">
               {/* User Email */}
               <div className="space-y-2">
@@ -943,7 +1126,179 @@ const Profile = () => {
                 </Button>
               </div>
             </Card>
-          </>
+            </TabsContent>
+            
+            <TabsContent value="tariff" className="space-y-6">
+              {/* Trial Status Banner */}
+              {currentSubscription?.isTrial && (
+                <Card className="p-6 bg-blue-50 border-blue-200">
+                  <div className="flex items-center justify-between flex-wrap gap-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-blue-900 mb-1">
+                        Бесплатный пробный период активен
+                      </h3>
+                      {currentSubscription.trialEndDate && (() => {
+                        const trialEnd = parseISO(currentSubscription.trialEndDate);
+                        const today = new Date();
+                        const daysRemaining = Math.ceil((trialEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                        return (
+                          <p className="text-sm text-blue-700">
+                            Пробный период заканчивается через {daysRemaining} {daysRemaining === 1 ? 'день' : daysRemaining < 5 ? 'дня' : 'дней'} ({format(trialEnd, "d MMMM yyyy", { locale: ru })})
+                          </p>
+                        );
+                      })()}
+                    </div>
+                    <Button 
+                      onClick={() => {
+                        // You can add contact functionality here, e.g., open email or contact form
+                        window.location.href = 'mailto:support@serkor.com?subject=Вопрос о тарифном плане';
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      Связаться с нами
+                    </Button>
+                  </div>
+                </Card>
+              )}
+              
+              <Card className="p-6">
+                <h2 className="text-2xl font-bold mb-6">Тарифные планы</h2>
+                <div className="grid gap-6 md:grid-cols-3">
+                  {[
+                    {
+                      name: "Старт",
+                      plan: "start" as const,
+                      subtitle: "Для соло-врачей",
+                      bullets: [
+                        "1 клиника · 1 врач",
+                        "Полный функционал: расписание, пациенты, аналитика",
+                        "Управление оплатами и долгами",
+                      ],
+                      monthlyPrice: "199 смн / месяц",
+                      yearlyPrice: "1 990 смн / год",
+                    },
+                    {
+                      name: "Рост",
+                      plan: "growth" as const,
+                      subtitle: "1 клиника · 2–10 врачей",
+                      bullets: [
+                        "Синхронизация аккаунтов врачей и общее расписание",
+                        "Администратор + аналитика по команде",
+                        "Бесплатный перенос данных из старой CRM",
+                      ],
+                      monthlyPrice: "150 смн за врача / месяц",
+                      yearlyPrice: "1 500 смн за врача / год",
+                    },
+                    {
+                      name: "Сеть",
+                      plan: "network" as const,
+                      subtitle: "Для сетей и франшиз",
+                      bullets: [
+                        "Несколько филиалов",
+                        "Единый финансовый контур",
+                        "API и кастомные интеграции",
+                      ],
+                      monthlyPrice: "Связаться с командой",
+                      yearlyPrice: "",
+                    },
+                  ].map((planInfo) => {
+                    const isActive = currentSubscription?.plan === planInfo.plan && currentSubscription?.isActive;
+                    const isTrial = isActive && currentSubscription?.isTrial;
+                    const nextPaymentDate = isActive && currentSubscription?.nextPaymentDate
+                      ? format(parseISO(currentSubscription.nextPaymentDate), "d MMMM yyyy", { locale: ru })
+                      : null;
+                    const trialEndDate = isTrial && currentSubscription?.trialEndDate
+                      ? format(parseISO(currentSubscription.trialEndDate), "d MMMM yyyy", { locale: ru })
+                      : null;
+                    
+                    return (
+                      <Card
+                        key={planInfo.plan}
+                        className={`p-6 relative ${
+                          isActive
+                            ? "border-2 border-emerald-500 bg-emerald-50/50"
+                            : "border"
+                        }`}
+                      >
+                        {isActive && (
+                          <Badge className={`absolute top-4 right-4 ${isTrial ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+                            <Check className="h-3 w-3 mr-1" />
+                            {isTrial ? 'Пробный период' : 'Активен'}
+                          </Badge>
+                        )}
+                        <div className="space-y-4">
+                          <div>
+                            <h3 className="text-xl font-bold">{planInfo.name}</h3>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {planInfo.subtitle}
+                            </p>
+                          </div>
+                          <ul className="space-y-2">
+                            {planInfo.bullets.map((bullet, idx) => (
+                              <li key={idx} className="flex items-start gap-2 text-sm">
+                                <Check className="h-4 w-4 mt-0.5 text-emerald-600 flex-shrink-0" />
+                                <span>{bullet}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          <div className="pt-4 border-t space-y-2">
+                            {planInfo.plan === "network" ? (
+                              <p className="text-sm font-medium text-center">
+                                {planInfo.monthlyPrice}
+                              </p>
+                            ) : (
+                              <>
+                                <div className="text-center">
+                                  <p className="text-lg font-bold">
+                                    {planInfo.monthlyPrice}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    или {planInfo.yearlyPrice}
+                                  </p>
+                                </div>
+                                {isActive && (
+                                  <div className="pt-2 border-t">
+                                    {isTrial ? (
+                                      <>
+                                        <p className="text-xs font-medium text-blue-600 text-center">
+                                          Бесплатный пробный период
+                                        </p>
+                                        {trialEndDate && (
+                                          <p className="text-xs text-muted-foreground text-center mt-1">
+                                            Пробный период до: {trialEndDate}
+                                          </p>
+                                        )}
+                                        {nextPaymentDate && (
+                                          <p className="text-xs font-medium text-center mt-1">
+                                            Платеж после пробного периода: {nextPaymentDate}
+                                          </p>
+                                        )}
+                                      </>
+                                    ) : (
+                                      <>
+                                        <p className="text-xs text-muted-foreground text-center">
+                                          Период: {currentSubscription?.period === "yearly" ? "Годовой" : "Месячный"}
+                                        </p>
+                                        {nextPaymentDate && (
+                                          <p className="text-xs font-medium text-center mt-1">
+                                            Следующий платеж: {nextPaymentDate}
+                                          </p>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </Card>
+            </TabsContent>
+          </Tabs>
         )}
       </div>
     </div>
