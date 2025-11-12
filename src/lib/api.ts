@@ -3,21 +3,17 @@
 
 // Import types from store FIRST to avoid circular dependency
 import type {
-  Clinic,
-  Doctor,
   Patient,
-  PatientFile,
-  Payment,
+  Doctor,
   Service,
-  User,
   Visit,
-} from "./store";
+  PatientFile,
+  User,
+  Clinic,
+  Payment,
+} from './store';
 
-const RAW_API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
-const API_BASE_URL = RAW_API_BASE_URL.replace(/\/+$/, "");
-const DEFAULT_TIMEOUT_MS = 15000;
-
-type HttpMethod = "GET" | "POST" | "DELETE";
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
 interface RequestConfig {
   method?: HttpMethod;
@@ -64,243 +60,187 @@ export class ApiError extends Error {
 }
 
 class ApiClient {
-  private buildUrl(path: string, query?: RequestConfig["query"]): string {
-    const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-    const url = new URL(`${API_BASE_URL}${normalizedPath}`);
-
-    if (query) {
-      Object.entries(query).forEach(([key, value]) => {
-        if (value === undefined || value === null) {
-          return;
-        }
-        url.searchParams.set(key, String(value));
-      });
-    }
-
-    return url.toString();
-  }
-
-  private async request<T>(path: string, config: RequestConfig = {}): Promise<T> {
-    const {
-      method = "GET",
-      query,
-      body,
-      headers,
-      signal,
-      timeoutMs = DEFAULT_TIMEOUT_MS,
-    } = config;
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new DOMException("Request timed out", "TimeoutError")), timeoutMs);
-    const externalAbortHandler = () => controller.abort(signal?.reason as DOMException | undefined);
-
-    if (signal) {
-      if (signal.aborted) {
-        controller.abort(signal.reason as DOMException | undefined);
-      } else {
-        signal.addEventListener("abort", externalAbortHandler);
-      }
-    }
-
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<ApiResponse<T>> {
     try {
-      const response = await fetch(this.buildUrl(path, query), {
-        method,
-        body: body !== undefined ? JSON.stringify(body) : undefined,
+      const url = `${API_BASE_URL}${endpoint}`;
+      const response = await fetch(url, {
+        ...options,
         headers: {
-          "Content-Type": body !== undefined ? "application/json" : undefined,
-          ...headers,
+          'Content-Type': 'application/json',
+          ...options.headers,
         },
-        signal: controller.signal,
       });
-
-      let payload: unknown = null;
-      if (response.status !== 204) {
-        if (isJsonResponse(response)) {
-          payload = await response.json();
-        } else {
-          payload = await response.text();
-        }
-      }
 
       if (!response.ok) {
-        throw new ApiError(
-          response.status,
-          extractErrorMessage(payload, response.statusText || "Request failed"),
-          payload,
-        );
+        throw new Error(`API error: ${response.statusText}`);
       }
 
-      return payload as T;
+      const data = await response.json();
+      return { data };
     } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-
-      if (error instanceof DOMException && error.name === "AbortError") {
-        throw new ApiError(408, "Request timed out");
-      }
-
-      console.error("API request failed:", error);
-      throw new ApiError(500, error instanceof Error ? error.message : "Unknown error");
-    } finally {
-      clearTimeout(timer);
-      if (signal) {
-        signal.removeEventListener("abort", externalAbortHandler);
-      }
+      console.error('API request failed:', error);
+      return { error: error instanceof Error ? error.message : 'Unknown error' };
     }
   }
 
   // Patients
   async getPatients(clinicId?: string): Promise<Patient[]> {
-    return this.request<Patient[]>("/patients", {
-      query: clinicId ? { clinicId } : undefined,
-    });
+    const params = clinicId ? `?clinicId=${clinicId}` : '';
+    const result = await this.request<Patient[]>(`/patients${params}`);
+    return result.data || [];
   }
 
-  async savePatient(patient: Patient): Promise<Patient> {
-    return this.request<Patient>("/patients", {
-      method: "POST",
-      body: patient,
+  async savePatient(patient: Patient): Promise<Patient | null> {
+    const result = await this.request<Patient>('/patients', {
+      method: 'POST',
+      body: JSON.stringify(patient),
     });
+    return result.data || null;
   }
 
-  async deletePatient(patientId: string): Promise<void> {
-    await this.request<void>(`/patients/${patientId}`, { method: "DELETE" });
+  async deletePatient(patientId: string, clinicId: string): Promise<boolean> {
+    const result = await this.request<{ success: boolean }>(
+      `/patients?id=${patientId}&clinicId=${clinicId}`,
+      { method: 'DELETE' }
+    );
+    return result.data?.success || false;
   }
 
   // Doctors
   async getDoctors(clinicId?: string): Promise<Doctor[]> {
-    return this.request<Doctor[]>("/doctors", {
-      query: clinicId ? { clinicId } : undefined,
-    });
+    const params = clinicId ? `?clinicId=${clinicId}` : '';
+    const result = await this.request<Doctor[]>(`/doctors${params}`);
+    return result.data || [];
   }
 
-  async saveDoctor(doctor: Doctor): Promise<Doctor> {
-    return this.request<Doctor>("/doctors", {
-      method: "POST",
-      body: doctor,
+  async saveDoctor(doctor: Doctor): Promise<Doctor | null> {
+    const result = await this.request<Doctor>('/doctors', {
+      method: 'POST',
+      body: JSON.stringify(doctor),
     });
+    return result.data || null;
   }
 
-  async deleteDoctor(doctorId: string): Promise<void> {
-    await this.request<void>(`/doctors/${doctorId}`, { method: "DELETE" });
+  async deleteDoctor(doctorId: string, clinicId: string): Promise<boolean> {
+    const result = await this.request<{ success: boolean }>(
+      `/doctors?id=${doctorId}&clinicId=${clinicId}`,
+      { method: 'DELETE' }
+    );
+    return result.data?.success || false;
   }
 
   // Services
   async getServices(clinicId?: string): Promise<Service[]> {
-    return this.request<Service[]>("/services", {
-      query: clinicId ? { clinicId } : undefined,
-    });
+    const params = clinicId ? `?clinicId=${clinicId}` : '';
+    const result = await this.request<Service[]>(`/services${params}`);
+    return result.data || [];
   }
 
-  async saveService(service: Service): Promise<Service> {
-    return this.request<Service>("/services", {
-      method: "POST",
-      body: service,
+  async saveService(service: Service): Promise<Service | null> {
+    const result = await this.request<Service>('/services', {
+      method: 'POST',
+      body: JSON.stringify(service),
     });
+    return result.data || null;
   }
 
-  async deleteService(serviceId: string): Promise<void> {
-    await this.request<void>(`/services/${serviceId}`, { method: "DELETE" });
+  async deleteService(serviceId: string, clinicId: string): Promise<boolean> {
+    const result = await this.request<{ success: boolean }>(
+      `/services?id=${serviceId}&clinicId=${clinicId}`,
+      { method: 'DELETE' }
+    );
+    return result.data?.success || false;
   }
 
   // Visits
   async getVisits(clinicId?: string): Promise<Visit[]> {
-    return this.request<Visit[]>("/visits", {
-      query: clinicId ? { clinicId } : undefined,
-    });
+    const params = clinicId ? `?clinicId=${clinicId}` : '';
+    const result = await this.request<Visit[]>(`/visits${params}`);
+    return result.data || [];
   }
 
-  async saveVisit(visit: Visit): Promise<Visit> {
-    return this.request<Visit>("/visits", {
-      method: "POST",
-      body: visit,
+  async saveVisit(visit: Visit): Promise<Visit | null> {
+    const result = await this.request<Visit>('/visits', {
+      method: 'POST',
+      body: JSON.stringify(visit),
     });
+    return result.data || null;
   }
 
-  async deleteVisit(visitId: string): Promise<void> {
-    await this.request<void>(`/visits/${visitId}`, { method: "DELETE" });
+  async deleteVisit(visitId: string, clinicId: string): Promise<boolean> {
+    const result = await this.request<{ success: boolean }>(
+      `/visits?id=${visitId}&clinicId=${clinicId}`,
+      { method: 'DELETE' }
+    );
+    return result.data?.success || false;
   }
 
   // Files
   async getFiles(patientId?: string, clinicId?: string): Promise<PatientFile[]> {
-    const files = await this.request<PatientFile[]>("/files", {
-      query: {
-        patientId,
-        clinicId,
-      },
-    });
-    return files.map((file) => ({
-      ...file,
-      file: (file as unknown as { file?: string; fileUrl?: string }).file ??
-        (file as unknown as { fileUrl?: string }).fileUrl ?? file.file,
-    })) as PatientFile[];
+    const params = new URLSearchParams();
+    if (patientId) params.append('patientId', patientId);
+    if (clinicId) params.append('clinicId', clinicId);
+    const query = params.toString() ? `?${params.toString()}` : '';
+    const result = await this.request<PatientFile[]>(`/files${query}`);
+    return result.data || [];
   }
 
-  async saveFile(file: PatientFile): Promise<PatientFile> {
-    if (typeof file.file !== "string") {
-      throw new Error("Binary file uploads are not supported by the API");
-    }
-
-    return this.request<PatientFile>("/files", {
-      method: "POST",
-      body: {
-        ...file,
-        file: file.file,
-      },
+  async saveFile(file: PatientFile): Promise<PatientFile | null> {
+    const result = await this.request<PatientFile>('/files', {
+      method: 'POST',
+      body: JSON.stringify(file),
     });
+    return result.data || null;
   }
 
-  async deleteFile(fileId: string): Promise<void> {
-    await this.request<void>(`/files/${fileId}`, { method: "DELETE" });
+  async deleteFile(fileId: string, clinicId: string): Promise<boolean> {
+    const result = await this.request<{ success: boolean }>(
+      `/files?id=${fileId}&clinicId=${clinicId}`,
+      { method: 'DELETE' }
+    );
+    return result.data?.success || false;
   }
 
   // Users
   async getUsers(clinicId?: string): Promise<User[]> {
-    return this.request<User[]>("/users", {
-      query: clinicId ? { clinicId } : undefined,
-    });
+    const params = clinicId ? `?clinicId=${clinicId}` : '';
+    const result = await this.request<User[]>(`/users${params}`);
+    return result.data || [];
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
-    try {
-      return await this.request<User>(`/users/email/${encodeURIComponent(email)}`);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
-        return null;
-      }
-      throw error;
-    }
+    const result = await this.request<User>(`/users?email=${email}`);
+    return result.data || null;
   }
 
-  async saveUser(user: User): Promise<User> {
-    return this.request<User>("/users", {
-      method: "POST",
-      body: user,
+  async saveUser(user: User): Promise<User | null> {
+    const result = await this.request<User>('/users', {
+      method: 'POST',
+      body: JSON.stringify(user),
     });
+    return result.data || null;
   }
 
   // Clinics
   async getClinics(): Promise<Clinic[]> {
-    return this.request<Clinic[]>("/clinics");
+    const result = await this.request<Clinic[]>('/clinics');
+    return result.data || [];
   }
 
   async getClinicById(id: string): Promise<Clinic | null> {
-    try {
-      return await this.request<Clinic>(`/clinics/${id}`);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
-        return null;
-      }
-      throw error;
-    }
+    const result = await this.request<Clinic>(`/clinics?id=${id}`);
+    return result.data || null;
   }
 
-  async saveClinic(clinic: Clinic): Promise<Clinic> {
-    return this.request<Clinic>("/clinics", {
-      method: "POST",
-      body: clinic,
+  async saveClinic(clinic: Clinic): Promise<Clinic | null> {
+    const result = await this.request<Clinic>('/clinics', {
+      method: 'POST',
+      body: JSON.stringify(clinic),
     });
+    return result.data || null;
   }
 
   // Payments
