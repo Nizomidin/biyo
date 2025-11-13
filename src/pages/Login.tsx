@@ -44,6 +44,10 @@ const Login = () => {
     }
 
     store.setCurrentUser(user);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("user-login-time", Date.now().toString());
+      localStorage.removeItem("onboarding-tour-shown");
+    }
     // Migrate existing data to this clinic if needed
     store.migrateDataToClinic(user.clinicId);
     

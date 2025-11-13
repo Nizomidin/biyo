@@ -261,6 +261,10 @@ const SignUp = () => {
 
     await store.saveUser(user);
     store.setCurrentUser(user);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("user-login-time", Date.now().toString());
+      localStorage.removeItem("onboarding-tour-shown");
+    }
     
     // Initialize default subscription if none exists (free trial, monthly, start plan for 1 doctor)
     const existingSubscription = store.getSubscription(user.clinicId);

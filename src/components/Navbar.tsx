@@ -1,12 +1,45 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { store } from "@/lib/store";
-import { Moon, Sun, User, Phone, Send, MessageCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { parseISO, differenceInCalendarDays } from "date-fns";
+import {
+  Calendar,
+  LogOut,
+  Menu,
+  Moon,
+  Phone,
+  Send,
+  Sun,
+  TrendingUp,
+  Users,
+  MessageCircle,
+  User,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Calendar, Users, TrendingUp } from "lucide-react";
-import { parseISO } from "date-fns";
+
+import { store } from "@/lib/store";
+import { useTheme } from "@/hooks/use-theme";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   Dialog,
   DialogContent,
@@ -19,60 +52,61 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const currentUser = store.getCurrentUser();
-  
+  const { isDark, toggleTheme } = useTheme();
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [contactModalOpen, setContactModalOpen] = useState(false);
+
   // Don't render navbar if no user - ProtectedRoute should handle redirect
   if (!currentUser) {
     return null;
   }
   
   const clinic = currentUser ? store.getClinicById(currentUser.clinicId) : null;
-  const subscription = store.getSubscription();
-  const [contactModalOpen, setContactModalOpen] = useState(false);
-  
-  // Calculate trial days remaining
-  const trialDaysRemaining = subscription?.isTrial && subscription?.trialEndDate
-    ? (() => {
-        try {
-          const trialEnd = parseISO(subscription.trialEndDate);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          trialEnd.setHours(0, 0, 0, 0);
-          const days = Math.ceil((trialEnd.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-          return days > 0 ? days : 0;
-        } catch (e) {
-          console.error('Error calculating trial days:', e);
-          return null;
-        }
-      })()
-    : null;
-
-  // Debug: Log subscription info (remove in production)
-  useEffect(() => {
-    if (subscription) {
-      console.log('Subscription:', subscription);
-      console.log('Trial days remaining:', trialDaysRemaining);
+  const subscription = store.getSubscription(currentUser.clinicId);
+  const trialDaysRemaining = useMemo(() => {
+    if (!subscription?.isTrial || !subscription.trialEndDate) {
+      return null;
     }
-  }, [subscription, trialDaysRemaining]);
+    try {
+      const trialEnd = parseISO(subscription.trialEndDate);
+      const today = new Date();
+      return Math.max(differenceInCalendarDays(trialEnd, today), 0);
+    } catch (error) {
+      console.warn("Failed to parse trial end date", error);
+      return null;
+    }
+  }, [subscription?.isTrial, subscription?.trialEndDate]);
 
   // All users should see all tabs - no role restrictions
-  const navItems = [
-    { path: "/", label: "Расписание", icon: Calendar },
-    { path: "/patients", label: "Пациенты", icon: Users },
-    { path: "/analytics", label: "Аналитика", icon: TrendingUp },
-  ].filter(Boolean); // Ensure no undefined items
+  const navItems = useMemo(
+    () =>
+      [
+        { path: "/", label: "Расписание", icon: Calendar },
+        { path: "/patients", label: "Пациенты", icon: Users },
+        { path: "/analytics", label: "Аналитика", icon: TrendingUp },
+      ] as const,
+    []
+  );
+
+  const userInitials = useMemo(() => {
+    if (!currentUser?.email) {
+      return "U";
+    }
+    const [localPart] = currentUser.email.split("@");
+    if (!localPart) {
+      return currentUser.email.slice(0, 2).toUpperCase();
+    }
+    const parts = localPart.replace(/[^a-zA-Zа-яА-Я0-9]+/g, " ").trim().split(" ");
+    if (parts.length === 0) {
+      return localPart.slice(0, 2).toUpperCase();
+    }
+    if (parts.length === 1) {
+      return parts[0].slice(0, 2).toUpperCase();
+    }
+    return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+  }, [currentUser?.email]);
 
   const isActive = (path: string) => location.pathname === path;
-
-  const toggleTheme = () => {
-    const isDark = document.body.classList.toggle("theme-dark");
-    if (isDark) {
-      localStorage.setItem("biyo-theme", "dark");
-      document.body.style.backgroundColor = "#111827";
-    } else {
-      localStorage.setItem("biyo-theme", "light");
-      document.body.style.backgroundColor = "#ffffff";
-    }
-  };
 
   const handleLogout = () => {
     store.logout();
@@ -82,38 +116,33 @@ export function Navbar() {
 
   return (
     <>
-      <header className="bg-card border-b border-border py-4 px-6 relative">
-        <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-8">
-          <div className="flex items-center gap-8 flex-1">
-            <Link to="/" className="flex items-center gap-4">
-              <span className="text-2xl font-semibold tracking-wide text-primary">
+      <header className="sticky top-0 z-40 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/80">
+        <div className="mx-auto flex w-full max-w-[1400px] items-center justify-between gap-3 px-4 py-3 md:px-6">
+          <Link to="/" className="flex items-center gap-3 md:gap-4">
+            <img
+              src="/ser.png"
+              alt="Serkor logo"
+              className="h-10 w-10 rounded-full border border-border object-cover md:h-12 md:w-12"
+            />
+            <div className="flex flex-col">
+              <span className="text-lg font-semibold tracking-tight md:text-xl">
                 Serkor
               </span>
-              <img
-                src="/ser.png"
-                alt="Serkor logo"
-                className="h-14 w-14 rounded-full border border-border object-cover"
-              />
-              <div className="flex flex-col">
-                <span className="text-base font-semibold leading-none">
-                  {clinic?.name || "Ваша клиника"}
-                </span>
-                <span className="text-xs text-muted-foreground leading-none">
-                  Клиника
-                </span>
-              </div>
-            </Link>
-          </div>
+              <span className="text-xs text-muted-foreground">
+                {clinic?.name || "Ваша клиника"}
+              </span>
+            </div>
+          </Link>
 
-          <nav className="flex items-center gap-2 absolute left-1/2 -translate-x-1/2">
+          <nav className="hidden items-center gap-1 rounded-full border border-border bg-muted/40 p-1 md:flex">
             {navItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
                   isActive(item.path)
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
                 data-tour={item.path === "/analytics" ? "analytics-tab" : undefined}
               >
@@ -123,117 +152,207 @@ export function Navbar() {
             ))}
           </nav>
 
-          <div className="flex items-center gap-3 ml-auto">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleTheme}
-              className="h-11 w-11"
-            >
-              <Sun className="h-6 w-6 hidden theme-dark:block" />
-              <Moon className="h-6 w-6 theme-dark:hidden" />
-            </Button>
-            <Link to="/profile" id="profile-button-container">
-              <Button variant="ghost" size="icon" className="h-11 w-11">
-                <User className="h-6 w-6" />
-              </Button>
-            </Link>
+          <div className="flex items-center gap-2">
             {subscription?.isTrial && (
-              <div className="flex items-center gap-2">
-                {trialDaysRemaining !== null && trialDaysRemaining > 0 && (
-                  <Badge className="bg-blue-600 text-white px-3 py-1.5 text-sm font-medium whitespace-nowrap">
-                    {trialDaysRemaining} {trialDaysRemaining === 1 ? 'день' : trialDaysRemaining < 5 ? 'дня' : 'дней'} осталось
+              <div className="hidden items-center gap-2 sm:flex">
+                {trialDaysRemaining !== null && (
+                  <Badge variant="secondary" className="bg-blue-600 text-white">
+                    Осталось {trialDaysRemaining} {trialDaysRemaining === 1 ? "день" : trialDaysRemaining < 5 ? "дня" : "дней"}
                   </Badge>
                 )}
-                <Button 
-                  onClick={() => setContactModalOpen(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs h-6 px-2 whitespace-nowrap"
+                <Button
                   size="sm"
+                  variant="outline"
+                  onClick={() => setContactModalOpen(true)}
+                  className="border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100"
                 >
                   Связаться с нами
                 </Button>
               </div>
             )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              className="h-10 w-10"
+              aria-label="Переключить тему"
+            >
+              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  className="hidden items-center gap-2 rounded-full pl-1.5 pr-3 md:flex"
+                >
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src="/ser.png" alt={currentUser.email} />
+                    <AvatarFallback>{userInitials}</AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium">{currentUser.email}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-64" align="end">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-sm font-semibold">
+                      {currentUser.email}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {clinic?.name || "Клиника не указана"}
+                    </span>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/profile" className="flex items-center gap-2">
+                    <Avatar className="h-6 w-6">
+                      <AvatarFallback>{userInitials}</AvatarFallback>
+                    </Avatar>
+                    <span>Профиль</span>
+                    <Badge variant="outline" className="ml-auto text-[10px] uppercase">
+                      {currentUser.role === "admin" ? "Админ" : "Врач"}
+                    </Badge>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    handleLogout();
+                  }}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Выйти
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Sheet open={isMobileNavOpen} onOpenChange={setIsMobileNavOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 md:hidden"
+                  aria-label="Открыть меню"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="flex flex-col gap-6 sm:max-w-xs">
+                <SheetHeader className="text-left">
+                  <SheetTitle>Навигация</SheetTitle>
+                  <div className="text-sm text-muted-foreground">
+                    {clinic?.name || "Ваша клиника"}
+                  </div>
+                </SheetHeader>
+                <div className="flex flex-col gap-2">
+                  {navItems.map((item) => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                        isActive(item.path)
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                      onClick={() => setIsMobileNavOpen(false)}
+                      data-tour={item.path === "/analytics" ? "analytics-tab" : undefined}
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+                <div className="mt-auto flex flex-col gap-3">
+                  {subscription?.isTrial && trialDaysRemaining !== null && (
+                    <Badge variant="secondary" className="justify-center py-2">
+                      Пробный период: {trialDaysRemaining} дней
+                    </Badge>
+                  )}
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      toggleTheme();
+                      setIsMobileNavOpen(false);
+                    }}
+                  >
+                    {isDark ? (
+                      <>
+                        <Sun className="mr-2 h-4 w-4" />
+                        Светлая тема
+                      </>
+                    ) : (
+                      <>
+                        <Moon className="mr-2 h-4 w-4" />
+                        Тёмная тема
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      handleLogout();
+                      setIsMobileNavOpen(false);
+                    }}
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Выйти
+                  </Button>
+                </div>
+              </SheetContent>
+            </Sheet>
           </div>
         </div>
       </header>
 
-      {/* Contact Modal */}
       <Dialog open={contactModalOpen} onOpenChange={setContactModalOpen}>
-        <DialogContent className="bg-white sm:max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-semibold text-slate-900">
+            <DialogTitle className="text-xl font-semibold">
               Мы ответим на любой вопрос и поможем настроить
             </DialogTitle>
-            <DialogDescription className="text-base text-slate-600">
+            <DialogDescription>
               Выберите удобный способ связи
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <a
-              href="tel:927474090"
-              className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 transition hover:bg-slate-50"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white">
-                <Phone className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900">Позвонить</div>
-                <div className="text-sm text-slate-600">927474090</div>
-              </div>
-            </a>
-            <a
-              href="https://t.me/mankimtukim"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 transition hover:bg-slate-50"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white">
-                <Send className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900">Телеграм</div>
-                <div className="text-sm text-slate-600">@mankimtukim</div>
-              </div>
-            </a>
-            <a
-              href="https://wa.me/992929898800"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 transition hover:bg-slate-50"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white">
-                <MessageCircle className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900">WhatsApp</div>
-                <div className="text-sm text-slate-600">+992929898800</div>
-              </div>
-            </a>
-            <a
-              href="https://instagram.com/over7inker"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white p-4 transition hover:bg-slate-50"
-            >
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white">
-                <svg
-                  className="h-5 w-5"
-                  fill="currentColor"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-                </svg>
-              </div>
-              <div>
-                <div className="font-semibold text-slate-900">Instagram</div>
-                <div className="text-sm text-slate-600">@over7inker</div>
-              </div>
-            </a>
+          <div className="space-y-3 py-2">
+            <ContactLink href="tel:927474090" icon={<Phone className="h-5 w-5" />} title="Позвонить" subtitle="927 47 40 90" />
+            <ContactLink href="https://t.me/mankimtukim" icon={<Send className="h-5 w-5" />} title="Telegram" subtitle="@mankimtukim" />
+            <ContactLink href="https://wa.me/992929898800" icon={<MessageCircle className="h-5 w-5" />} title="WhatsApp" subtitle="+992 929 898 800" />
           </div>
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function ContactLink({
+  href,
+  icon,
+  title,
+  subtitle,
+}: {
+  href: string;
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <a
+      href={href}
+      target={href.startsWith("http") ? "_blank" : undefined}
+      rel={href.startsWith("http") ? "noopener noreferrer" : undefined}
+      className="flex items-center gap-3 rounded-lg border border-border bg-card/80 p-4 transition hover:bg-muted"
+    >
+      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-white">
+        {icon}
+      </div>
+      <div>
+        <div className="font-semibold">{title}</div>
+        <div className="text-sm text-muted-foreground">{subtitle}</div>
+      </div>
+    </a>
   );
 }

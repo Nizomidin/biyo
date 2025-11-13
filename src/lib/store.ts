@@ -966,10 +966,18 @@ class Store {
     } else {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     }
+
+    if (typeof window !== 'undefined') {
+      const detail = user ? { user } : { user: null };
+      window.dispatchEvent(new CustomEvent('biyo-auth-changed', { detail }));
+    }
   }
 
   logout(): void {
     this.setCurrentUser(null);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'auth' } }));
+    }
   }
 
   // Super admin methods - get all data without clinic filtering

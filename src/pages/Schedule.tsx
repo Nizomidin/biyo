@@ -1,10 +1,15 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import {
   ChevronLeft,
   ChevronRight,
   Plus,
   Trash2,
   Calendar as CalendarIcon,
+  Clock,
+  Filter,
+  LocateFixed,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,6 +23,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -64,7 +70,10 @@ import { Calendar } from "@/components/ui/calendar";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuCheckboxItem,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
@@ -113,6 +122,17 @@ const timeSlots = [
   "23:00",
 ];
 
+const DEFAULT_STATUS_FILTERS: Visit["status"][] = ["scheduled", "completed"];
+const STATUS_LABELS: Record<Visit["status"], string> = {
+  scheduled: "Запланировано",
+  completed: "Завершено",
+  cancelled: "Отменено",
+};
+const MONEY_FORMATTER = new Intl.NumberFormat("ru-RU", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 interface AppointmentDisplay {
   id: string;
   doctorId: string;
@@ -154,6 +174,49 @@ const Schedule = () => {
   const [visits, setVisits] = useState(store.getVisits());
   const allDoctors = store.getDoctors();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [searchTerm, setSearchTerm] = useState("");
+  const [activeStatusFilters, setActiveStatusFilters] = useState<Set<Visit["status"]>>(
+    () => new Set(DEFAULT_STATUS_FILTERS)
+  );
+  const [selectedDoctorFilters, setSelectedDoctorFilters] = useState<string[]>([]);
+  const scheduleContainerRef = useRef<HTMLDivElement | null>(null);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
+
+  const toggleStatusFilter = useCallback((status: Visit["status"]) => {
+    setActiveStatusFilters((prev) => {
+      const next = new Set(prev);
+      if (next.has(status)) {
+        next.delete(status);
+      } else {
+        next.add(status);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleDoctorFilter = useCallback((doctorId: string) => {
+    setSelectedDoctorFilters((prev) => {
+      if (prev.includes(doctorId)) {
+        return prev.filter((id) => id !== doctorId);
+      }
+      return [...prev, doctorId];
+    });
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setSearchTerm("");
+    setSelectedDoctorFilters([]);
+    setActiveStatusFilters(new Set<Visit["status"]>(DEFAULT_STATUS_FILTERS));
+  }, []);
+
+  const handleManualRefresh = useCallback(() => {
+    setPatients(store.getPatients());
+    setServices(store.getServices());
+    setVisits(store.getVisits());
+    setDoctorsRefreshKey((prev) => prev + 1);
+    setVisitsRefreshKey((prev) => prev + 1);
+    toast.success("Данные расписания обновлены");
+  }, []);
   
   // Ensure non-admin users have a doctor profile
   useEffect(() => {
@@ -249,7 +312,7 @@ const Schedule = () => {
 
   // Get appointments for selected date
   // For non-admin users, only show appointments for their doctor
-  const appointments = useMemo(() => {
+  const baseAppointments = useMemo(() => {
     const currentVisits = store.getVisits(); // Always read fresh visits from store
     const now = new Date();
     const dayStart = startOfDay(selectedDate);
@@ -292,6 +355,120 @@ const Schedule = () => {
         } as AppointmentDisplay;
       });
   }, [selectedDate, doctors, patients, visitsRefreshKey, doctorsRefreshKey]); // Add visits and refresh key to trigger updates
+
+  const appointments = useMemo(() => {
+    const search = searchTerm.trim().toLowerCase();
+    const hasDoctorFilters = selectedDoctorFilters.length > 0;
+    const hasStatusFilters = activeStatusFilters.size > 0;
+
+    return baseAppointments.filter((appointment) => {
+      if (hasDoctorFilters && !selectedDoctorFilters.includes(appointment.doctorId)) {
+        return false;
+      }
+
+      if (hasStatusFilters && !activeStatusFilters.has(appointment.visit.status)) {
+        return false;
+      }
+
+      if (search) {
+        const doctor = doctors.find((d) => d.id === appointment.doctorId);
+        const haystack = [
+          appointment.patientName,
+          doctor?.name ?? "",
+          format(parseISO(appointment.visit.startTime), "HH:mm"),
+        ]
+          .join(" ")
+          .toLowerCase();
+
+        if (!haystack.includes(search)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [baseAppointments, activeStatusFilters, selectedDoctorFilters, searchTerm, doctors]);
+
+  const scheduleStats = useMemo(() => {
+    const total = baseAppointments.length;
+    const scheduled = baseAppointments.filter((appt) => appt.visit.status === "scheduled").length;
+    const completed = baseAppointments.filter((appt) => appt.visit.status === "completed").length;
+    const cancelled = baseAppointments.filter((appt) => appt.visit.status === "cancelled").length;
+
+    const totalRevenue = baseAppointments.reduce((sum, appt) => sum + (appt.visit.cost || 0), 0);
+    const totalPaid = baseAppointments.reduce(
+      (sum, appt) =>
+        sum +
+        (appt.visit.payments?.reduce((acc, payment) => acc + payment.amount, 0) || 0),
+      0
+    );
+    const occupiedMinutes = baseAppointments.reduce((sum, appt) => sum + appt.duration, 0);
+    const totalAvailableMinutes = doctors.length * timeSlots.length * 30;
+    const occupancy =
+      totalAvailableMinutes > 0
+        ? Math.min(100, Math.round((occupiedMinutes / totalAvailableMinutes) * 100))
+        : 0;
+
+    return {
+      total,
+      scheduled,
+      completed,
+      cancelled,
+      totalRevenue,
+      totalPaid,
+      occupancy,
+      occupiedMinutes,
+      totalAvailableMinutes,
+    };
+  }, [baseAppointments, doctors.length]);
+
+  const outstandingBalance = useMemo(
+    () => Math.max(scheduleStats.totalRevenue - scheduleStats.totalPaid, 0),
+    [scheduleStats.totalRevenue, scheduleStats.totalPaid]
+  );
+
+  const isStatusFilterDefault = useMemo(() => {
+    if (activeStatusFilters.size !== DEFAULT_STATUS_FILTERS.length) {
+      return false;
+    }
+    return DEFAULT_STATUS_FILTERS.every((status) => activeStatusFilters.has(status));
+  }, [activeStatusFilters]);
+
+  const filtersApplied =
+    searchTerm.trim().length > 0 ||
+    selectedDoctorFilters.length > 0 ||
+    !isStatusFilterDefault;
+
+  const scrollToCurrentTime = useCallback(() => {
+    if (!scheduleContainerRef.current) {
+      return;
+    }
+
+    if (!isSameDay(new Date(), selectedDate)) {
+      scheduleContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    const now = new Date();
+    const minutesSinceStart = now.getHours() * 60 + now.getMinutes() - 7 * 60;
+    if (minutesSinceStart < 0) {
+      scheduleContainerRef.current.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    const top = Math.max((minutesSinceStart / 30) * SLOT_HEIGHT - 160, 0);
+    scheduleContainerRef.current.scrollTo({
+      top,
+      behavior: "smooth",
+    });
+  }, [selectedDate]);
+
+  useEffect(() => {
+    if (!autoScrollEnabled) {
+      return;
+    }
+    scrollToCurrentTime();
+  }, [autoScrollEnabled, currentTime, selectedDate, scrollToCurrentTime]);
 
   const navigateDate = (direction: "prev" | "next" | "today") => {
     if (direction === "today") {
@@ -468,10 +645,15 @@ const Schedule = () => {
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-[1400px] mx-auto">
-        <Card className="bg-card p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-2xl font-bold">Расписание</h1>
-            <div className="flex gap-2">
+        <Card className="bg-card p-6 space-y-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-1">
+              <h1 className="text-2xl font-bold tracking-tight">Расписание</h1>
+              <p className="text-sm text-muted-foreground">
+                Управляйте приёмами и загрузкой врачей в реальном времени.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <AddDoctorDialog
                 open={isAddDoctorOpen}
                 onOpenChange={(open) => {
@@ -487,62 +669,243 @@ const Schedule = () => {
                 <Tooltip delayDuration={100}>
                   <TooltipTrigger asChild>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="rounded-full"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
                       onClick={() => setIsAddDoctorOpen(true)}
+                      data-tour="add-doctor"
                     >
-              <Plus className="h-5 w-5" />
-            </Button>
+                      <Plus className="h-4 w-4" />
+                      Врач
+                    </Button>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Добавить врача</p>
                   </TooltipContent>
                 </Tooltip>
               )}
+              <Tooltip delayDuration={100}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleManualRefresh}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Обновить
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Принудительно обновить данные</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip delayDuration={100}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={autoScrollEnabled ? "default" : "outline"}
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => setAutoScrollEnabled((prev) => !prev)}
+                  >
+                    <Clock className="h-4 w-4" />
+                    {autoScrollEnabled ? "Автопрокрутка" : "Ручной режим"}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Прокручивать расписание к текущему времени автоматически</p>
+                </TooltipContent>
+              </Tooltip>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => {
+                  setAutoScrollEnabled(false);
+                  scrollToCurrentTime();
+                }}
+              >
+                <LocateFixed className="h-4 w-4" />
+                Сейчас
+              </Button>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 mb-8">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-lg"
-              onClick={() => navigateDate("prev")}
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label="Записи" value={scheduleStats.total} badge={scheduleStats.total}>
+              {scheduleStats.scheduled} запланировано на {selectedDateStr}
+            </StatCard>
+            <StatCard label="Статусы" value={scheduleStats.completed} badge={scheduleStats.cancelled} badgeLabel="Отменено">
+              Завершено записей: {scheduleStats.completed}
+            </StatCard>
+            <StatCard
+              label="Выручка"
+              value={`${MONEY_FORMATTER.format(scheduleStats.totalRevenue)} смн`}
+              badge={`${MONEY_FORMATTER.format(scheduleStats.totalPaid)} смн`}
+              badgeLabel="Оплачено"
             >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-lg"
-                >
-                  <CalendarIcon className="h-4 w-4" />
-                  <span className="text-sm font-medium">{selectedDateStr}</span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) {
-                      setSelectedDate(date);
-                    }
-                  }}
-                  initialFocus
+              {outstandingBalance > 0
+                ? `Остаток к оплате: ${MONEY_FORMATTER.format(outstandingBalance)} смн`
+                : "Все оплачено"}
+            </StatCard>
+            <StatCard label="Загрузка" value={`${scheduleStats.occupancy}%`} badge={`${scheduleStats.occupancy}%`}>
+              {scheduleStats.totalAvailableMinutes > 0
+                ? `${Math.round(scheduleStats.occupiedMinutes / 60)} из ${Math.round(
+                    scheduleStats.totalAvailableMinutes / 60
+                  )} часов занято`
+                : "Нет доступных слотов"}
+            </StatCard>
+          </div>
+
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-lg"
+                onClick={() => navigateDate("prev")}
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="flex items-center gap-2 rounded-lg bg-secondary px-4 py-2"
+                  >
+                    <CalendarIcon className="h-4 w-4" />
+                    <span className="text-sm font-medium">{selectedDateStr}</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (date) {
+                        setSelectedDate(date);
+                      }
+                    }}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-lg"
+                onClick={() => navigateDate("next")}
+              >
+                <ChevronRight className="h-5 w-5" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigateDate("today")}>
+                Сегодня
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Input
+                  placeholder="Поиск по пациенту или врачу..."
+                  className="w-full min-w-[220px] pr-9 sm:w-64"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
                 />
-              </PopoverContent>
-            </Popover>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="rounded-lg"
-              onClick={() => navigateDate("next")}
-            >
-              <ChevronRight className="h-5 w-5" />
-            </Button>
+                {searchTerm && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                    onClick={() => setSearchTerm("")}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Filter className="h-4 w-4" />
+                    {selectedDoctorFilters.length > 0
+                      ? `Врачи (${selectedDoctorFilters.length})`
+                      : "Все врачи"}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-64" align="end">
+                  <DropdownMenuLabel>Фильтр по врачам</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {doctors.length === 0 ? (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                      Нет доступных врачей
+                    </div>
+                  ) : (
+                    doctors.map((doctor) => (
+                      <DropdownMenuCheckboxItem
+                        key={doctor.id}
+                        checked={selectedDoctorFilters.includes(doctor.id)}
+                        onCheckedChange={() => toggleDoctorFilter(doctor.id)}
+                      >
+                        {doctor.name}
+                      </DropdownMenuCheckboxItem>
+                    ))
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      setSelectedDoctorFilters([]);
+                    }}
+                  >
+                    Показать всех
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <Filter className="h-4 w-4" />
+                    Статус
+                    {!isStatusFilterDefault && (
+                      <Badge variant="secondary" className="ml-1">
+                        {activeStatusFilters.size}
+                      </Badge>
+                    )}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="w-56" align="end">
+                  <DropdownMenuLabel>Статусы записей</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {(Object.keys(STATUS_LABELS) as Visit["status"][]).map((status) => (
+                    <DropdownMenuCheckboxItem
+                      key={status}
+                      checked={activeStatusFilters.has(status)}
+                      onCheckedChange={() => toggleStatusFilter(status)}
+                    >
+                      {STATUS_LABELS[status]}
+                    </DropdownMenuCheckboxItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      setActiveStatusFilters(new Set<Visit["status"]>(DEFAULT_STATUS_FILTERS));
+                    }}
+                  >
+                    Сбросить фильтр
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {filtersApplied && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  Очистить
+                </Button>
+              )}
+            </div>
           </div>
 
           {doctors.length === 0 ? (
@@ -559,7 +922,12 @@ const Schedule = () => {
               )}
             </div>
           ) : (
-            <div className="relative overflow-x-auto overflow-y-auto" style={{ maxHeight: 'calc(100vh - 300px)' }}>
+            <div
+              ref={scheduleContainerRef}
+              className="relative overflow-x-auto overflow-y-auto rounded-xl border border-border/60"
+              style={{ maxHeight: "calc(100vh - 320px)" }}
+              onPointerDown={() => setAutoScrollEnabled(false)}
+            >
               {renderCurrentTimeIndicator()}
               <div
                 className="grid gap-0 relative"
@@ -730,6 +1098,20 @@ const Schedule = () => {
                 </div>
               );
             })}
+              {appointments.length === 0 && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                  <div className="rounded-lg border border-dashed border-border bg-background/95 px-6 py-4 text-center shadow-sm">
+                    <p className="text-sm font-medium">
+                      {filtersApplied ? "Нет записей по выбранным фильтрам" : "На эту дату пока нет записей"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {filtersApplied
+                        ? "Попробуйте изменить фильтры или выбрать другую дату."
+                        : "Нажмите на свободный слот, чтобы создать запись."}
+                    </p>
+                  </div>
+                </div>
+              )}
           </div>
           )}
         </Card>
@@ -868,6 +1250,12 @@ function AddDoctorDialog({
       return;
     }
 
+    const clinicId = doctor?.clinicId ?? store.getCurrentClinicId();
+    if (!clinicId) {
+      toast.error("Не удалось определить клинику. Повторите попытку после входа.");
+      return;
+    }
+
     const doctorData: Doctor = {
       id: doctor?.id || `doctor_${Date.now()}_${Math.random()}`,
       name,
@@ -875,6 +1263,7 @@ function AddDoctorDialog({
       email: email || undefined,
       phone: phone || undefined,
       color,
+      clinicId,
     };
 
     await store.saveDoctor(doctorData);
@@ -1313,8 +1702,19 @@ function AppointmentDialog({
       return vs;
     });
 
-    const visitId = appointment?.id || `visit_${Date.now()}_${Math.random()}`;
     const totalPriceValue = parseMoney(totalPrice);
+    if (!totalPrice || totalPriceValue <= 0) {
+      toast.error("Укажите корректную общую стоимость визита");
+      setIsLoading(false);
+      return;
+    }
+    const clinicId = store.getCurrentClinicId();
+    if (!clinicId) {
+      toast.error("Не удалось определить клинику. Повторите попытку после входа.");
+      setIsLoading(false);
+      return;
+    }
+    const visitId = appointment?.id || `visit_${Date.now()}_${Math.random()}`;
     const cash = parseMoney(cashAmount);
     const wallet = parseMoney(ewalletAmount);
     const nowIso = new Date().toISOString();
@@ -1358,6 +1758,7 @@ function AppointmentDialog({
       createdAt: appointment?.createdAt || nowIso,
       cashAmount: cash,
       ewalletAmount: wallet,
+      clinicId,
     };
 
     try {
@@ -1395,6 +1796,11 @@ function AppointmentDialog({
       toast.error("Введите имя пациента");
       return;
     }
+    const clinicId = store.getCurrentClinicId();
+    if (!clinicId) {
+      toast.error("Не удалось определить клинику. Повторите попытку после входа.");
+      return;
+    }
     const newPatient: Patient = {
       id: `patient_${Date.now()}_${Math.random()}`,
       name: newPatientName,
@@ -1405,6 +1811,7 @@ function AppointmentDialog({
       teeth: [],
       services: [],
       balance: 0,
+      clinicId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -1430,10 +1837,16 @@ function AppointmentDialog({
       toast.error("Введите название услуги");
       return;
     }
+    const clinicId = store.getCurrentClinicId();
+    if (!clinicId) {
+      toast.error("Не удалось определить клинику. Повторите попытку после входа.");
+      return;
+    }
     const newService = {
       id: `service_${Date.now()}_${Math.random()}`,
       name: newServiceName.trim(),
       defaultPrice: 0,
+      clinicId,
     };
     await store.saveService(newService);
     toast.success("Услуга создана");
@@ -1447,36 +1860,6 @@ function AppointmentDialog({
     setServiceSearchQuery("");
     setServiceSearchOpen(false);
   };
-
-  // Organize services by category
-  const servicesByCategory = useMemo(() => {
-    const categories: Record<string, typeof services> = {
-      therapeutic: [],
-      prosthetic: [],
-      surgical: [],
-      implant: [],
-      disposable: [],
-      other: [],
-    };
-    
-    services.forEach((service) => {
-      if (service.id.startsWith("therapeutic_")) {
-        categories.therapeutic.push(service);
-      } else if (service.id.startsWith("prosthetic_")) {
-        categories.prosthetic.push(service);
-      } else if (service.id.startsWith("surgical_")) {
-        categories.surgical.push(service);
-      } else if (service.id.startsWith("implant_")) {
-        categories.implant.push(service);
-      } else if (service.id.startsWith("disposable_")) {
-        categories.disposable.push(service);
-      } else {
-        categories.other.push(service);
-      }
-    });
-    
-    return categories;
-  }, [services]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1497,16 +1880,13 @@ function AppointmentDialog({
             <Label>
               Пациент <span className="text-destructive">*</span>
             </Label>
-            <Popover 
-              open={patientSearchOpen} 
+            <Popover
+              open={patientSearchOpen}
               onOpenChange={(open) => {
                 setPatientSearchOpen(open);
                 if (!open) {
-                  // Reset to default view when popover closes
-                  setIsCreatingPatient(false);
                   setNewPatientName("");
                   setNewPatientPhone("");
-                  setNewPatientEmail("");
                 }
               }}
             >
@@ -2030,10 +2410,17 @@ function ServicesDialog({
       return;
     }
 
+    const clinicId = store.getCurrentClinicId();
+    if (!clinicId) {
+      toast.error("Не удалось определить клинику. Повторите попытку после входа.");
+      return;
+    }
+
     const service = {
       id: `service_${Date.now()}_${Math.random()}`,
       name: newServiceName,
       defaultPrice: parseFloat(newServicePrice) || 0,
+      clinicId,
     };
 
     await store.saveService(service);
@@ -2228,3 +2615,32 @@ function addMinutes(time: string, minutes: number): string {
 }
 
 export default Schedule;
+
+function StatCard({
+  label,
+  value,
+  badge,
+  badgeLabel,
+  children,
+}: {
+  label: string;
+  value: string | number;
+  badge?: string | number;
+  badgeLabel?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border/60 bg-muted/40 p-4">
+      <div className="flex items-center justify-between text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span>{label}</span>
+        {badge !== undefined && (
+          <Badge variant="outline" className="font-medium">
+            {badgeLabel ? `${badgeLabel}: ${badge}` : badge}
+          </Badge>
+        )}
+      </div>
+      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      {children && <p className="mt-1 text-xs text-muted-foreground">{children}</p>}
+    </div>
+  );
+}
