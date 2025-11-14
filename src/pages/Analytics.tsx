@@ -22,6 +22,7 @@ import {
 import { store } from "@/lib/store";
 import { format, startOfDay, endOfDay, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear, isWithinInterval, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
+import { PageContainer } from "@/components/layout/PageContainer";
 
 type PeriodType = "today" | "week" | "month" | "year" | "custom";
 
@@ -182,15 +183,14 @@ const Analytics = () => {
   }, [filteredVisits, doctors]);
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-[1400px] mx-auto space-y-6">
-        <Card className="bg-card p-6">
-          <h2 className="text-xl font-bold mb-6">Фильтры</h2>
-          <div className="flex gap-4">
-            <div className="flex items-center gap-2">
+    <PageContainer contentClassName="space-y-4 sm:space-y-6">
+      <Card className="bg-card p-4 sm:p-6">
+        <h2 className="mb-6 text-xl font-bold">Фильтры</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
               <span className="text-sm text-muted-foreground">Период:</span>
               <Select value={period} onValueChange={(v) => setPeriod(v as PeriodType)}>
-                <SelectTrigger className="w-[180px] bg-secondary border-0">
+                <SelectTrigger className="w-full border-0 bg-secondary sm:w-[180px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -201,13 +201,13 @@ const Analytics = () => {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
               <span className="text-sm text-muted-foreground">Врач:</span>
               <Select
                 value={selectedDoctorId}
                 onValueChange={setSelectedDoctorId}
               >
-                <SelectTrigger className="w-[180px] bg-secondary border-0">
+                <SelectTrigger className="w-full border-0 bg-secondary sm:w-[200px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -220,28 +220,28 @@ const Analytics = () => {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-        </Card>
+        </div>
+      </Card>
 
-        <div className="grid grid-cols-5 gap-4">
-          <Card className="bg-card p-6">
-            <div className="flex items-center gap-3 mb-2">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Card className="bg-card p-4 sm:p-6">
+          <div className="mb-2 flex items-center gap-3">
               <Users className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Пациентов</span>
             </div>
             <div className="text-3xl font-bold">{metrics.totalPatients}</div>
-          </Card>
+        </Card>
 
-          <Card className="bg-card p-6">
-            <div className="flex items-center gap-3 mb-2">
+        <Card className="bg-card p-4 sm:p-6">
+          <div className="mb-2 flex items-center gap-3">
               <Calendar className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Приемов</span>
             </div>
             <div className="text-3xl font-bold">{metrics.totalAppointments}</div>
-          </Card>
+        </Card>
 
-          <Card className="bg-card p-6">
-            <div className="flex items-center gap-3 mb-2">
+        <Card className="bg-card p-4 sm:p-6">
+          <div className="mb-2 flex items-center gap-3">
               <TrendingUp className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Общий доход</span>
             </div>
@@ -250,8 +250,8 @@ const Analytics = () => {
             </div>
           </Card>
 
-          <Card className="bg-card p-6">
-            <div className="flex items-center gap-3 mb-2">
+        <Card className="bg-card p-4 sm:p-6">
+          <div className="mb-2 flex items-center gap-3">
               <DollarSign className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Оплачено</span>
             </div>
@@ -260,8 +260,8 @@ const Analytics = () => {
             </div>
           </Card>
 
-          <Card className="bg-card p-6">
-            <div className="flex items-center gap-3 mb-2">
+        <Card className="bg-card p-4 sm:p-6">
+          <div className="mb-2 flex items-center gap-3">
               <TrendingDown className="h-5 w-5 text-muted-foreground" />
               <span className="text-sm text-muted-foreground">Не оплачено</span>
             </div>
@@ -269,11 +269,11 @@ const Analytics = () => {
               {metrics.totalUnpaid.toFixed(2)} смн
             </div>
           </Card>
-        </div>
+      </div>
 
-        <div className="grid grid-cols-2 gap-6">
-          <Card className="bg-card p-6">
-            <div className="flex items-center justify-between mb-6">
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="bg-card p-4 sm:p-6">
+          <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-lg font-bold">Доход по дням</h3>
             </div>
             <ResponsiveContainer width="100%" height={300}>
@@ -307,8 +307,8 @@ const Analytics = () => {
             </div>
           </Card>
 
-          <Card className="bg-card p-6">
-            <div className="flex items-center justify-between mb-6">
+        <Card className="bg-card p-4 sm:p-6">
+          <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-lg font-bold">Приемы по дням</h3>
             </div>
             <ResponsiveContainer width="100%" height={300}>
@@ -339,12 +339,12 @@ const Analytics = () => {
               <span>■ Приемов</span>
             </div>
           </Card>
-        </div>
+      </div>
 
-        <Card className="bg-card p-6">
-          <h3 className="text-lg font-bold mb-6">Статистика по врачам</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
+      <Card className="bg-card p-4 sm:p-6">
+        <h3 className="mb-6 text-lg font-bold">Статистика по врачам</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">
@@ -395,8 +395,7 @@ const Analytics = () => {
             </table>
           </div>
         </Card>
-      </div>
-    </div>
+    </PageContainer>
   );
 };
 

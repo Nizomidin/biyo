@@ -144,7 +144,6 @@ export function Navbar() {
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
-                data-tour={item.path === "/analytics" ? "analytics-tab" : undefined}
               >
                 <item.icon className="h-4 w-4" />
                 {item.label}
@@ -258,7 +257,6 @@ export function Navbar() {
                           : "text-muted-foreground hover:bg-muted hover:text-foreground"
                       }`}
                       onClick={() => setIsMobileNavOpen(false)}
-                      data-tour={item.path === "/analytics" ? "analytics-tab" : undefined}
                     >
                       <item.icon className="h-4 w-4" />
                       {item.label}

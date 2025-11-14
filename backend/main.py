@@ -1,185 +1,20 @@
 from __future__ import annotations
 
-import json
 import os
-import sqlite3
-import threading
 from datetime import datetime
-from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Iterable, List, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
-from models import Clinic, Doctor, Patient, PatientFile, Service, User, Visit
-from models import Payment
-from repository import TableRepository
-from sheets_client import SheetsClient
+from database import Base, engine, get_db
+import models
+import schemas
 
-load_dotenv()
-
-
-class SQLiteSheetsClient:
-    """Storage backend that mimics SheetsClient but persists data in a SQLite database."""
-
-    def __init__(self, db_path: Path) -> None:
-        self.db_path = db_path
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
-        self._initialize()
-
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.db_path, check_same_thread=False)
-
-    def _initialize(self) -> None:
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sheet_headers (
-                    sheet TEXT PRIMARY KEY,
-                    headers TEXT NOT NULL
-                )
-                """
-            )
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS sheet_rows (
-                    sheet TEXT NOT NULL,
-                    id TEXT NOT NULL,
-                    clinic_id TEXT,
-                    data TEXT NOT NULL,
-                    position INTEGER NOT NULL,
-                    PRIMARY KEY (sheet, id)
-                )
-                """
-            )
-
-    def _ensure_headers(self, conn: sqlite3.Connection, sheet: str, headers: list[str]) -> list[str]:
-        cur = conn.execute("SELECT headers FROM sheet_headers WHERE sheet = ?", (sheet,))
-        row = cur.fetchone()
-        if row is None:
-            stored = headers
-            conn.execute(
-                "INSERT OR REPLACE INTO sheet_headers(sheet, headers) VALUES(?, ?)",
-                (sheet, json.dumps(headers)),
-            )
-        else:
-            stored = json.loads(row[0])
-            if stored != headers:
-                stored = headers
-                conn.execute(
-                    "UPDATE sheet_headers SET headers = ? WHERE sheet = ?",
-                    (json.dumps(headers), sheet),
-                )
-        return stored
-
-    def get_rows(self, sheet_name: str, headers: list[str]) -> list[list[str]]:
-        with self._lock, self._connect() as conn:
-            stored_headers = self._ensure_headers(conn, sheet_name, headers)
-            cur = conn.execute(
-                "SELECT id, clinic_id, data FROM sheet_rows WHERE sheet = ? ORDER BY position ASC",
-                (sheet_name,),
-            )
-            rows = cur.fetchall()
-
-        result = [stored_headers]
-        for row_id, clinic_id, data_json in rows:
-            result.append([row_id, clinic_id or "", data_json])
-        return result
-
-    def append_row(self, sheet_name: str, headers: list[str], row: list[str]) -> None:
-        if len(row) < 3:
-            raise ValueError("Row data must contain id, clinicId and payload JSON")
-
-        with self._lock, self._connect() as conn:
-            self._ensure_headers(conn, sheet_name, headers)
-            cur = conn.execute(
-                "SELECT COALESCE(MAX(position), 0) FROM sheet_rows WHERE sheet = ?",
-                (sheet_name,),
-            )
-            next_position = cur.fetchone()[0] + 1
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO sheet_rows(sheet, id, clinic_id, data, position)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (sheet_name, row[0], row[1] if len(row) > 1 else None, row[2], next_position),
-            )
-
-    def update_row(self, sheet_name: str, headers: list[str], row_index: int, row: list[str]) -> None:
-        if len(row) < 3:
-            raise ValueError("Row data must contain id, clinicId and payload JSON")
-
-        with self._lock, self._connect() as conn:
-            self._ensure_headers(conn, sheet_name, headers)
-            conn.execute(
-                """
-                UPDATE sheet_rows
-                SET clinic_id = ?, data = ?
-                WHERE sheet = ? AND id = ?
-                """,
-                (row[1] if len(row) > 1 else None, row[2], sheet_name, row[0]),
-            )
-
-    def delete_rows(self, sheet_name: str, headers: list[str], row_indices: list[int]) -> None:
-        if not row_indices:
-            return
-
-        with self._lock, self._connect() as conn:
-            self._ensure_headers(conn, sheet_name, headers)
-            cur = conn.execute(
-                "SELECT id FROM sheet_rows WHERE sheet = ? ORDER BY position ASC",
-                (sheet_name,),
-            )
-            ids_in_order = [row[0] for row in cur.fetchall()]
-
-            ids_to_delete = []
-            for row_index in row_indices:
-                # TableRepository indexes start at 2 (header row is 1)
-                list_index = row_index - 2
-                if 0 <= list_index < len(ids_in_order):
-                    ids_to_delete.append(ids_in_order[list_index])
-
-            for row_id in ids_to_delete:
-                conn.execute(
-                    "DELETE FROM sheet_rows WHERE sheet = ? AND id = ?",
-                    (sheet_name, row_id),
-                )
-
-
-def create_storage_client() -> Tuple[object, int]:
-    spreadsheet_id = os.getenv("GOOGLE_SHEETS_ID")
-    client_email = os.getenv("GOOGLE_CLIENT_EMAIL")
-    private_key = os.getenv("GOOGLE_PRIVATE_KEY")
-    port = int(os.getenv("BACKEND_PORT") or os.getenv("PORT") or "4000")
-
-    if spreadsheet_id and client_email and private_key:
-        print("✅ Using Google Sheets backend storage.")
-        return (
-            SheetsClient(
-                spreadsheet_id=spreadsheet_id,
-                client_email=client_email,
-                private_key=private_key,
-            ),
-            port,
-        )
-
-    db_path = Path(os.getenv("SERKOR_DB_PATH", "backend/data.db"))
-    print(f"💾 Using local SQLite database at {db_path.resolve()}.")
-    return SQLiteSheetsClient(db_path), port
-
-
-sheets_client, backend_port = create_storage_client()
-
-patients_repo = TableRepository[dict](sheets_client, "Patients")
-doctors_repo = TableRepository[dict](sheets_client, "Doctors")
-services_repo = TableRepository[dict](sheets_client, "Services")
-visits_repo = TableRepository[dict](sheets_client, "Visits")
-clinics_repo = TableRepository[dict](sheets_client, "Clinics")
-users_repo = TableRepository[dict](sheets_client, "Users")
-files_repo = TableRepository[dict](sheets_client, "Files")
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Serkor Backend")
 
@@ -192,14 +27,34 @@ app.add_middleware(
 )
 
 
+def _clinic_or_404(db: Session, clinic_id: str) -> models.Clinic:
+    clinic = db.get(models.Clinic, clinic_id)
+    if not clinic:
+        raise HTTPException(status_code=404, detail="Clinic not found")
+    return clinic
+
+
+def _ensure_unique_email(db: Session, email: str, user_id: Optional[str] = None) -> None:
+    stmt = select(models.User).where(models.User.email == email)
+    if user_id:
+        stmt = stmt.where(models.User.id != user_id)
+    if db.execute(stmt).scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="User already exists")
+
+
+def _visit_services_to_db(services: Iterable[Union[str, schemas.VisitServicePayload]]) -> List[dict]:
+    converted: List[dict] = []
+    for item in services:
+        if isinstance(item, str):
+            converted.append({"serviceId": item, "quantity": 1})
+        else:
+            converted.append(item.model_dump(by_alias=True))
+    return converted
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(_request, exc):
     return JSONResponse(status_code=500, content={"error": str(exc)})
-
-
-def generate_id(prefix: str) -> str:
-    timestamp = int(datetime.utcnow().timestamp() * 1000)
-    return f"{prefix}_{timestamp}"
 
 
 @app.get("/health")
@@ -207,175 +62,438 @@ def health_check():
     return {"ok": True, "timestamp": datetime.utcnow().isoformat()}
 
 
-# Patients
-@app.get("/api/patients")
-def list_patients(clinicId: Optional[str] = Query(None)):
-    return patients_repo.list(lambda p: p.get("clinicId") == clinicId if clinicId else True)
+# Clinics ---------------------------------------------------------------------
 
 
-@app.post("/api/patients")
-def save_patient(patient: Patient):
-    payload = patient.model_dump()
-    now = datetime.utcnow().isoformat()
-    payload.setdefault("id", generate_id("patient"))
-    payload.setdefault("createdAt", now)
-    payload["updatedAt"] = now
-    patients_repo.upsert(payload)
-    return payload
+@app.get("/api/clinics", response_model=Union[schemas.ClinicResponse, List[schemas.ClinicResponse]])
+def list_clinics(id: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    if id:
+        clinic = db.get(models.Clinic, id)
+        if not clinic:
+            raise HTTPException(status_code=404, detail="Clinic not found")
+        return schemas.ClinicResponse.model_validate(clinic)
+
+    stmt = select(models.Clinic).order_by(models.Clinic.created_at.desc())
+    clinics = db.execute(stmt).scalars().all()
+    return [schemas.ClinicResponse.model_validate(clinic) for clinic in clinics]
 
 
-@app.delete("/api/patients")
-def remove_patient(id: str = Query(...), clinicId: str = Query(...)):
-    patients_repo.delete_where(lambda p: p.get("id") == id and p.get("clinicId") == clinicId)
-    return {"success": True}
+@app.post("/api/clinics", response_model=schemas.ClinicResponse)
+def upsert_clinic(payload: schemas.ClinicPayload, db: Session = Depends(get_db)):
+    if payload.id:
+        clinic = db.get(models.Clinic, payload.id)
+        if not clinic:
+            raise HTTPException(status_code=404, detail="Clinic not found")
+        clinic.name = payload.name
+    else:
+        clinic = models.Clinic(
+            id=payload.id or schemas.create_id("clinic"),
+            name=payload.name,
+            created_at=payload.createdAt or datetime.utcnow(),
+        )
+        db.add(clinic)
+
+    db.commit()
+    db.refresh(clinic)
+    return schemas.ClinicResponse.model_validate(clinic)
 
 
-# Doctors
-@app.get("/api/doctors")
-def list_doctors(clinicId: Optional[str] = Query(None)):
-    return doctors_repo.list(lambda d: d.get("clinicId") == clinicId if clinicId else True)
+# Users -----------------------------------------------------------------------
 
 
-@app.post("/api/doctors")
-def save_doctor(doctor: Doctor):
-    payload = doctor.model_dump()
-    payload.setdefault("id", generate_id("doctor"))
-    doctors_repo.upsert(payload)
-    return payload
+@app.get("/api/users", response_model=Union[schemas.UserResponse, List[schemas.UserResponse], None])
+def list_users(
+    email: Optional[str] = Query(None),
+    clinicId: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    if email:
+        user = db.execute(select(models.User).where(models.User.email == email)).scalar_one_or_none()
+        if not user:
+            return None
+        return schemas.UserResponse.model_validate(user)
+
+    stmt = select(models.User)
+    if clinicId:
+        stmt = stmt.where(models.User.clinic_id == clinicId)
+    stmt = stmt.order_by(models.User.created_at.desc())
+    users = db.execute(stmt).scalars().all()
+    return [schemas.UserResponse.model_validate(user) for user in users]
+
+
+@app.post("/api/users", response_model=schemas.UserResponse)
+def upsert_user(payload: schemas.UserPayload, db: Session = Depends(get_db)):
+    clinic = _clinic_or_404(db, payload.clinicId)
+    _ensure_unique_email(db, payload.email, payload.id)
+
+    if payload.id:
+        user = db.get(models.User, payload.id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+    else:
+        user = models.User(id=payload.id or schemas.create_id("user"), clinic=clinic)
+        db.add(user)
+
+    user.email = payload.email
+    user.password = payload.password
+    user.phone = payload.phone
+    user.proficiency = payload.proficiency
+    user.role = payload.role
+    if payload.createdAt:
+        user.created_at = payload.createdAt
+
+    db.commit()
+    db.refresh(user)
+    return schemas.UserResponse.model_validate(user)
+
+
+# Doctors ---------------------------------------------------------------------
+
+
+@app.get("/api/doctors", response_model=List[schemas.DoctorResponse])
+def list_doctors(clinicId: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    stmt = select(models.Doctor)
+    if clinicId:
+        stmt = stmt.where(models.Doctor.clinic_id == clinicId)
+    stmt = stmt.order_by(models.Doctor.name.asc())
+    doctors = db.execute(stmt).scalars().all()
+    return [schemas.DoctorResponse.model_validate(doc) for doc in doctors]
+
+
+@app.post("/api/doctors", response_model=schemas.DoctorResponse)
+def upsert_doctor(payload: schemas.DoctorPayload, db: Session = Depends(get_db)):
+    clinic = _clinic_or_404(db, payload.clinicId)
+
+    if payload.id:
+        doctor = db.get(models.Doctor, payload.id)
+        if not doctor:
+            raise HTTPException(status_code=404, detail="Doctor not found")
+    else:
+        doctor = models.Doctor(
+            id=payload.id or schemas.create_id("doctor"),
+            clinic=clinic,
+        )
+        db.add(doctor)
+
+    doctor.name = payload.name
+    doctor.specialization = payload.specialization
+    doctor.email = payload.email
+    doctor.phone = payload.phone
+    doctor.color = payload.color
+    doctor.user_id = payload.userId
+
+    db.commit()
+    db.refresh(doctor)
+    return schemas.DoctorResponse.model_validate(doctor)
 
 
 @app.delete("/api/doctors")
-def remove_doctor(id: str = Query(...), clinicId: str = Query(...)):
-    doctors_repo.delete_where(lambda d: d.get("id") == id and d.get("clinicId") == clinicId)
+def delete_doctor(id: str = Query(...), clinicId: str = Query(...), db: Session = Depends(get_db)):
+    doctor = db.get(models.Doctor, id)
+    if not doctor or doctor.clinic_id != clinicId:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    db.delete(doctor)
+    db.commit()
     return {"success": True}
 
 
-# Services
-@app.get("/api/services")
-def list_services(clinicId: Optional[str] = Query(None)):
-    return services_repo.list(lambda s: s.get("clinicId") == clinicId if clinicId else True)
+# Services --------------------------------------------------------------------
 
 
-@app.post("/api/services")
-def save_service(service: Service):
-    payload = service.model_dump()
-    payload.setdefault("id", generate_id("service"))
-    services_repo.upsert(payload)
-    return payload
+@app.get("/api/services", response_model=List[schemas.ServiceResponse])
+def list_services(clinicId: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    stmt = select(models.Service)
+    if clinicId:
+        stmt = stmt.where(models.Service.clinic_id == clinicId)
+    stmt = stmt.order_by(models.Service.name.asc())
+    services = db.execute(stmt).scalars().all()
+    return [schemas.ServiceResponse.model_validate(service) for service in services]
+
+
+@app.post("/api/services", response_model=schemas.ServiceResponse)
+def upsert_service(payload: schemas.ServicePayload, db: Session = Depends(get_db)):
+    clinic = _clinic_or_404(db, payload.clinicId)
+
+    if payload.id:
+        service = db.get(models.Service, payload.id)
+        if not service:
+            raise HTTPException(status_code=404, detail="Service not found")
+    else:
+        service = models.Service(
+            id=payload.id or schemas.create_id("service"),
+            clinic=clinic,
+        )
+        db.add(service)
+
+    service.name = payload.name
+    service.default_price = payload.defaultPrice
+
+    db.commit()
+    db.refresh(service)
+    return schemas.ServiceResponse.model_validate(service)
 
 
 @app.delete("/api/services")
-def remove_service(id: str = Query(...), clinicId: str = Query(...)):
-    services_repo.delete_where(lambda s: s.get("id") == id and s.get("clinicId") == clinicId)
+def delete_service(id: str = Query(...), clinicId: str = Query(...), db: Session = Depends(get_db)):
+    service = db.get(models.Service, id)
+    if not service or service.clinic_id != clinicId:
+        raise HTTPException(status_code=404, detail="Service not found")
+    db.delete(service)
+    db.commit()
     return {"success": True}
 
 
-# Visits
-@app.get("/api/visits")
-def list_visits(clinicId: Optional[str] = Query(None)):
-    return visits_repo.list(lambda v: v.get("clinicId") == clinicId if clinicId else True)
+# Patients --------------------------------------------------------------------
 
 
-@app.post("/api/visits")
-def save_visit(visit: Visit):
-    payload = visit.model_dump()
-    payload.setdefault("id", generate_id("visit"))
-    payload.setdefault("createdAt", datetime.utcnow().isoformat())
-    payload.setdefault("payments", [])
-    visits_repo.upsert(payload)
-    return payload
+@app.get("/api/patients", response_model=List[schemas.PatientResponse])
+def list_patients(clinicId: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    stmt = select(models.Patient)
+    if clinicId:
+        stmt = stmt.where(models.Patient.clinic_id == clinicId)
+    stmt = stmt.order_by(models.Patient.created_at.desc())
+    patients = db.execute(stmt).scalars().all()
+    return [schemas.PatientResponse.model_validate(patient) for patient in patients]
+
+
+@app.post("/api/patients", response_model=schemas.PatientResponse)
+def upsert_patient(payload: schemas.PatientPayload, db: Session = Depends(get_db)):
+    clinic = _clinic_or_404(db, payload.clinicId)
+
+    if payload.id:
+        patient = db.get(models.Patient, payload.id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
+    else:
+        patient = models.Patient(
+            id=payload.id or schemas.create_id("patient"),
+            clinic=clinic,
+            created_at=payload.createdAt or datetime.utcnow(),
+        )
+        db.add(patient)
+
+    patient.name = payload.name
+    patient.phone = payload.phone
+    patient.email = payload.email
+    patient.date_of_birth = payload.dateOfBirth
+    patient.is_child = payload.isChild
+    patient.address = payload.address
+    patient.notes = payload.notes
+    patient.teeth = [tooth.model_dump() for tooth in payload.teeth]
+    patient.services = payload.services
+    patient.balance = payload.balance
+    patient.updated_at = payload.updatedAt or datetime.utcnow()
+
+    db.commit()
+    db.refresh(patient)
+    return schemas.PatientResponse.model_validate(patient)
+
+
+@app.delete("/api/patients")
+def delete_patient(id: str = Query(...), clinicId: str = Query(...), db: Session = Depends(get_db)):
+    patient = db.get(models.Patient, id)
+    if not patient or patient.clinic_id != clinicId:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    db.delete(patient)
+    db.commit()
+    return {"success": True}
+
+
+# Visits ----------------------------------------------------------------------
+
+
+@app.get("/api/visits", response_model=List[schemas.VisitResponse])
+def list_visits(clinicId: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    stmt = select(models.Visit)
+    if clinicId:
+        stmt = stmt.where(models.Visit.clinic_id == clinicId)
+    stmt = stmt.order_by(models.Visit.start_time.desc())
+    visits = db.execute(stmt).scalars().all()
+    return [schemas.VisitResponse.model_validate(visit) for visit in visits]
+
+
+@app.post("/api/visits", response_model=schemas.VisitResponse)
+def upsert_visit(payload: schemas.VisitPayload, db: Session = Depends(get_db)):
+    clinic = _clinic_or_404(db, payload.clinicId)
+    patient = db.get(models.Patient, payload.patientId)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+    if patient.clinic_id != clinic.id:
+        raise HTTPException(status_code=400, detail="Patient belongs to another clinic")
+
+    doctor: Optional[models.Doctor] = None
+    if payload.doctorId:
+        doctor = db.get(models.Doctor, payload.doctorId)
+        if not doctor:
+            raise HTTPException(status_code=404, detail="Doctor not found")
+
+    services = _visit_services_to_db(payload.services)
+
+    if payload.id:
+        visit = db.get(models.Visit, payload.id)
+        if not visit:
+            raise HTTPException(status_code=404, detail="Visit not found")
+    else:
+        visit = models.Visit(
+            id=payload.id or schemas.create_id("visit"),
+            clinic=clinic,
+            patient=patient,
+            doctor=doctor,
+            created_at=payload.createdAt or datetime.utcnow(),
+        )
+        db.add(visit)
+
+    visit.patient = patient
+    visit.doctor = doctor
+    visit.start_time = payload.startTime
+    visit.end_time = payload.endTime
+    visit.services = services
+    visit.cost = payload.cost
+    visit.notes = payload.notes
+    visit.status = payload.status
+    visit.treated_teeth = payload.treatedTeeth
+    visit.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(visit)
+    return schemas.VisitResponse.model_validate(visit)
 
 
 @app.delete("/api/visits")
-def remove_visit(id: str = Query(...), clinicId: str = Query(...)):
-    visits_repo.delete_where(lambda v: v.get("id") == id and v.get("clinicId") == clinicId)
+def delete_visit(id: str = Query(...), clinicId: str = Query(...), db: Session = Depends(get_db)):
+    visit = db.get(models.Visit, id)
+    if not visit or visit.clinic_id != clinicId:
+        raise HTTPException(status_code=404, detail="Visit not found")
+    db.delete(visit)
+    db.commit()
     return {"success": True}
 
 
-# Payments
-@app.post("/api/payments")
-def add_payment(payment: Payment):
-    visit = visits_repo.find(lambda v: v.get("id") == payment.visitId)
+# Payments --------------------------------------------------------------------
+
+
+@app.post("/api/payments", response_model=schemas.PaymentResponse)
+def add_payment(payload: schemas.PaymentPayload, db: Session = Depends(get_db)):
+    visit = db.get(models.Visit, payload.visitId)
     if not visit:
         raise HTTPException(status_code=404, detail="Visit not found")
 
-    payments = visit.get("payments", [])
-    payload = payment.model_dump()
-    payload.setdefault("id", generate_id("payment"))
-    payload.setdefault("date", datetime.utcnow().isoformat())
-    payments.append(payload)
-    visit["payments"] = payments
+    payment = models.Payment(
+        id=payload.id or schemas.create_id("payment"),
+        visit=visit,
+        amount=payload.amount,
+        method=payload.method,
+        date=payload.date or datetime.utcnow(),
+    )
+    db.add(payment)
 
-    cash_total = sum(p.get("amount", 0) for p in payments if p.get("method") == "cash")
-    wallet_total = sum(p.get("amount", 0) for p in payments if p.get("method") == "ewallet")
-    visit["cashAmount"] = round(cash_total, 2)
-    visit["ewalletAmount"] = round(wallet_total, 2)
+    db.commit()
+    db.refresh(payment)
 
-    visits_repo.upsert(visit)
-    return payload
-
-
-# Clinics
-@app.get("/api/clinics")
-def list_clinics(id: Optional[str] = Query(None)):
-    if id:
-        return clinics_repo.find(lambda c: c.get("id") == id)
-    return clinics_repo.list()
-
-
-@app.post("/api/clinics")
-def save_clinic(clinic: Clinic):
-    payload = clinic.model_dump()
-    payload.setdefault("id", generate_id("clinic"))
-    payload.setdefault("createdAt", datetime.utcnow().isoformat())
-    clinics_repo.upsert(payload)
-    return payload
-
-
-# Users
-@app.get("/api/users")
-def list_users(email: Optional[str] = Query(None), clinicId: Optional[str] = Query(None)):
-    if email:
-        return users_repo.find(lambda u: u.get("email") == email)
-    return users_repo.list(lambda u: u.get("clinicId") == clinicId if clinicId else True)
-
-
-@app.post("/api/users")
-def save_user(user: User):
-    payload = user.model_dump()
-    payload.setdefault("id", generate_id("user"))
-    payload.setdefault("createdAt", datetime.utcnow().isoformat())
-    users_repo.upsert(payload)
-    return payload
-
-
-# Files
-@app.get("/api/files")
-def list_files(patientId: Optional[str] = Query(None), clinicId: Optional[str] = Query(None)):
-    return files_repo.list(
-        lambda f: (
-            (not patientId or f.get("patientId") == patientId)
-            and (not clinicId or f.get("clinicId") == clinicId)
+    # Recalculate cash and ewallet totals
+    cash_total = db.scalar(
+        select(func.coalesce(func.sum(models.Payment.amount), 0)).where(
+            models.Payment.visit_id == visit.id, models.Payment.method == "cash"
         )
     )
+    wallet_total = db.scalar(
+        select(func.coalesce(func.sum(models.Payment.amount), 0)).where(
+            models.Payment.visit_id == visit.id, models.Payment.method == "ewallet"
+        )
+    )
+    visit.cash_amount = float(cash_total or 0)
+    visit.ewallet_amount = float(wallet_total or 0)
+    db.commit()
+
+    return schemas.PaymentResponse.model_validate(payment)
 
 
-@app.post("/api/files")
-def save_file(file: PatientFile):
-    payload = file.model_dump()
-    payload.setdefault("id", generate_id("file"))
-    payload.setdefault("uploadedAt", datetime.utcnow().isoformat())
-    files_repo.upsert(payload)
-    return payload
+@app.delete("/api/payments/{payment_id}")
+def delete_payment(payment_id: str, db: Session = Depends(get_db)):
+    payment = db.get(models.Payment, payment_id)
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    visit_id = payment.visit_id
+    db.delete(payment)
+    db.commit()
+
+    visit = db.get(models.Visit, visit_id)
+    if visit:
+        cash_total = db.scalar(
+            select(func.coalesce(func.sum(models.Payment.amount), 0)).where(
+                models.Payment.visit_id == visit.id, models.Payment.method == "cash"
+            )
+        )
+        wallet_total = db.scalar(
+            select(func.coalesce(func.sum(models.Payment.amount), 0)).where(
+                models.Payment.visit_id == visit.id, models.Payment.method == "ewallet"
+            )
+        )
+        visit.cash_amount = float(cash_total or 0)
+        visit.ewallet_amount = float(wallet_total or 0)
+        db.commit()
+
+    return {"success": True}
+
+
+# Patient files ---------------------------------------------------------------
+
+
+@app.get("/api/files", response_model=List[schemas.PatientFileResponse])
+def list_files(
+    patientId: Optional[str] = Query(None),
+    clinicId: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    stmt = select(models.PatientFile)
+    if patientId:
+        stmt = stmt.where(models.PatientFile.patient_id == patientId)
+    if clinicId:
+        stmt = stmt.where(models.PatientFile.clinic_id == clinicId)
+    stmt = stmt.order_by(models.PatientFile.uploaded_at.desc())
+    files = db.execute(stmt).scalars().all()
+    return [schemas.PatientFileResponse.model_validate(file) for file in files]
+
+
+@app.post("/api/files", response_model=schemas.PatientFileResponse)
+def upsert_file(payload: schemas.PatientFilePayload, db: Session = Depends(get_db)):
+    clinic = _clinic_or_404(db, payload.clinicId)
+    patient = db.get(models.Patient, payload.patientId)
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    if payload.id:
+        file = db.get(models.PatientFile, payload.id)
+        if not file:
+            raise HTTPException(status_code=404, detail="File not found")
+    else:
+        file = models.PatientFile(
+            id=payload.id or schemas.create_id("file"),
+            clinic=clinic,
+            patient=patient,
+            uploaded_at=payload.uploadedAt or datetime.utcnow(),
+        )
+        db.add(file)
+
+    file.name = payload.name
+    file.file_url = payload.file
+
+    db.commit()
+    db.refresh(file)
+    return schemas.PatientFileResponse.model_validate(file)
 
 
 @app.delete("/api/files")
-def remove_file(id: str = Query(...), clinicId: str = Query(...)):
-    files_repo.delete_where(lambda f: f.get("id") == id and f.get("clinicId") == clinicId)
+def delete_file(id: str = Query(...), clinicId: str = Query(...), db: Session = Depends(get_db)):
+    file = db.get(models.PatientFile, id)
+    if not file or file.clinic_id != clinicId:
+        raise HTTPException(status_code=404, detail="File not found")
+    db.delete(file)
+    db.commit()
     return {"success": True}
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=backend_port, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("BACKEND_PORT", "4000")), reload=True)

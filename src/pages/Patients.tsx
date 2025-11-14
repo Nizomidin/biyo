@@ -54,6 +54,7 @@ import { store, Patient, ToothStatus, VisitService, Payment, Visit, PatientFile 
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
+import { PageContainer } from "@/components/layout/PageContainer";
 
 const formatAmountForInput = (value?: number) =>
   value === undefined || value === null
@@ -189,10 +190,9 @@ const Patients = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-[1400px] mx-auto">
-        <Card className="bg-card p-6">
-          <div className="flex items-center justify-between mb-6">
+    <PageContainer contentClassName="space-y-4 sm:space-y-6">
+      <Card className="bg-card p-4 sm:p-6">
+          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <h1 className="text-2xl font-bold">Пациенты</h1>
             <AddPatientDialog
               open={isAddDialogOpen}
@@ -201,23 +201,23 @@ const Patients = () => {
             />
           </div>
 
-          <div className="flex items-center gap-4 mb-6">
-            <div className="relative flex-1">
+          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+            <div className="relative w-full md:flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Поиск по имени, телефону или email..."
-                className="pl-10 bg-secondary border-0"
+                className="w-full border-0 bg-secondary pl-10"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mb-6">
+          <div className="mb-6 flex flex-wrap gap-2">
             <Button
               variant={activeFilters.has("debt") ? "default" : "secondary"}
               size="sm"
-              className="text-sm"
+              className="w-full text-sm sm:w-auto"
               onClick={() => handleFilterClick("debt")}
             >
               Есть долг
@@ -225,7 +225,7 @@ const Patients = () => {
             <Button
               variant={activeFilters.has("untreated") ? "default" : "secondary"}
               size="sm"
-              className="text-sm"
+              className="w-full text-sm sm:w-auto"
               onClick={() => handleFilterClick("untreated")}
             >
               Нелеченные зубы
@@ -233,7 +233,7 @@ const Patients = () => {
             <Button
               variant={activeFilters.has("children") ? "default" : "secondary"}
               size="sm"
-              className="text-sm"
+              className="w-full text-sm sm:w-auto"
               onClick={() => handleFilterClick("children")}
             >
               Дети
@@ -241,7 +241,7 @@ const Patients = () => {
             <Button
               variant={activeFilters.has("adults") ? "default" : "secondary"}
               size="sm"
-              className="text-sm"
+              className="w-full text-sm sm:w-auto"
               onClick={() => handleFilterClick("adults")}
             >
               Взрослые
@@ -265,13 +265,12 @@ const Patients = () => {
                 return (
                   <div
                     key={patient.id}
-                    className="flex items-center justify-between p-4 bg-secondary/50 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
+                    className="flex cursor-pointer flex-col gap-3 rounded-lg bg-secondary/50 p-4 transition-colors hover:bg-secondary sm:flex-row sm:items-center sm:justify-between"
                     onClick={() => handlePatientClick(patient)}
-                    data-tour="patient-card"
                   >
-                    <div className="flex-1">
-                      <div className="font-medium mb-1">{patient.name}</div>
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <div className="w-full sm:flex-1">
+                      <div className="mb-1 font-medium">{patient.name}</div>
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                         <div className="flex items-center gap-1">
                           <Phone className="h-3 w-3" />
                           {patient.phone}
@@ -282,7 +281,7 @@ const Patients = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-left sm:text-right">
                       <div className="font-medium text-primary">
                         {totalCharged.toFixed(2)} смн
                       </div>
@@ -299,8 +298,7 @@ const Patients = () => {
               })
             )}
           </div>
-        </Card>
-      </div>
+      </Card>
 
       {/* Patient Card Drawer */}
       {selectedPatient && (
@@ -336,7 +334,7 @@ const Patients = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 };
 
@@ -441,7 +439,7 @@ function AddPatientDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger asChild>
-        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2" data-tour="add-patient">
+        <Button className="bg-primary hover:bg-primary/90 text-primary-foreground gap-2">
           <Plus className="h-4 w-4" />
           Добавить пациента
         </Button>

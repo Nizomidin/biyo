@@ -66,6 +66,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { PageContainer } from "@/components/layout/PageContainer";
 import { Calendar } from "@/components/ui/calendar";
 import {
   DropdownMenu,
@@ -77,6 +78,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreVertical } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   Table,
   TableBody,
@@ -144,6 +146,7 @@ interface AppointmentDisplay {
 }
 
 const Schedule = () => {
+  const isMobile = useIsMobile();
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isAddDoctorOpen, setIsAddDoctorOpen] = useState(false);
   const [isAppointmentOpen, setIsAppointmentOpen] = useState(false);
@@ -564,6 +567,10 @@ const Schedule = () => {
   };
 
   const SLOT_HEIGHT = 32; // Height of each 30-minute slot in pixels
+  const TIME_COLUMN_WIDTH = isMobile ? 72 : 100;
+  const DOCTOR_COLUMN_MIN_WIDTH = isMobile ? 160 : 200;
+  const scheduleMaxHeight = isMobile ? "calc(100vh - 260px)" : "calc(100vh - 320px)";
+  const headerOffset = isMobile ? 56 : 58;
 
   const getAppointmentPosition = (startTime: string) => {
     // Parse ISO datetime string to get just the time
@@ -630,7 +637,7 @@ const Schedule = () => {
     return (
       <div
         className="absolute inset-x-0 pointer-events-none z-30"
-        style={{ top: `${position + 58}px` }}
+        style={{ top: `${position + headerOffset}px` }}
       >
         <div className="relative">
           <div className="h-0.5 bg-primary"></div>
@@ -643,9 +650,8 @@ const Schedule = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-[1400px] mx-auto">
-        <Card className="bg-card p-6 space-y-6">
+    <PageContainer contentClassName="space-y-4 sm:space-y-6">
+      <Card className="bg-card p-4 sm:p-6 space-y-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="space-y-1">
               <h1 className="text-2xl font-bold tracking-tight">Расписание</h1>
@@ -673,7 +679,6 @@ const Schedule = () => {
                       size="sm"
                       className="gap-2"
                       onClick={() => setIsAddDoctorOpen(true)}
-                      data-tour="add-doctor"
                     >
                       <Plus className="h-4 w-4" />
                       Врач
@@ -757,8 +762,8 @@ const Schedule = () => {
             </StatCard>
           </div>
 
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:justify-start">
               <Button
                 variant="ghost"
                 size="icon"
@@ -802,11 +807,11 @@ const Schedule = () => {
                 Сегодня
               </Button>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="relative">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+              <div className="relative w-full sm:w-auto sm:min-w-[220px]">
                 <Input
                   placeholder="Поиск по пациенту или врачу..."
-                  className="w-full min-w-[220px] pr-9 sm:w-64"
+                  className="w-full pr-9 sm:w-64"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -824,7 +829,7 @@ const Schedule = () => {
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-2">
+                  <Button variant="outline" size="sm" className="w-full justify-between gap-2 sm:w-auto sm:justify-center">
                     <Filter className="h-4 w-4" />
                     {selectedDoctorFilters.length > 0
                       ? `Врачи (${selectedDoctorFilters.length})`
@@ -862,7 +867,7 @@ const Schedule = () => {
               </DropdownMenu>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-2">
+                  <Button variant="outline" size="sm" className="w-full justify-between gap-2 sm:w-auto sm:justify-center">
                     <Filter className="h-4 w-4" />
                     Статус
                     {!isStatusFilterDefault && (
@@ -900,7 +905,7 @@ const Schedule = () => {
                   variant="ghost"
                   size="sm"
                   onClick={clearFilters}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="w-full justify-center text-muted-foreground hover:text-foreground sm:w-auto"
                 >
                   Очистить
                 </Button>
@@ -916,7 +921,7 @@ const Schedule = () => {
                   : "Врач не найден. Обратитесь к администратору для создания вашего профиля врача."}
               </p>
               {currentUser?.role === "admin" && (
-                <Button onClick={() => setIsAddDoctorOpen(true)} data-tour="add-doctor">
+                <Button onClick={() => setIsAddDoctorOpen(true)}>
                   Добавить врача
                 </Button>
               )}
@@ -924,21 +929,24 @@ const Schedule = () => {
           ) : (
             <div
               ref={scheduleContainerRef}
-              className="relative overflow-x-auto overflow-y-auto rounded-xl border border-border/60"
-              style={{ maxHeight: "calc(100vh - 320px)" }}
+              className="relative w-full overflow-x-auto overflow-y-auto rounded-xl border border-border/60"
+              style={{ maxHeight: scheduleMaxHeight }}
               onPointerDown={() => setAutoScrollEnabled(false)}
             >
               {renderCurrentTimeIndicator()}
               <div
-                className="grid gap-0 relative"
+                className="relative grid min-w-max gap-0"
                 style={{
-                  gridTemplateColumns: `100px repeat(${doctors.length}, minmax(200px, 1fr))`,
+                  gridTemplateColumns: `${TIME_COLUMN_WIDTH}px repeat(${doctors.length}, minmax(${DOCTOR_COLUMN_MIN_WIDTH}px, 1fr))`,
                 }}
               >
                 {/* Header row: Time label + Doctor headers */}
-                <div className="text-sm font-medium text-muted-foreground py-2 px-2 border-b border-r sticky left-0 top-0 bg-card z-20 h-[56px] flex items-center">
-                Время
-              </div>
+                <div
+                  className="sticky left-0 top-0 z-20 flex h-[56px] items-center border-b border-r bg-card py-2 px-2 text-sm font-medium text-muted-foreground"
+                  style={{ width: `${TIME_COLUMN_WIDTH}px` }}
+                >
+                  Время
+                </div>
               {doctors.map((doctor) => (
                 <div
                   key={doctor.id}
@@ -1007,9 +1015,12 @@ const Schedule = () => {
                 {/* Time slots and schedule cells */}
                 {timeSlots.map((time, timeIndex) => (
                   <React.Fragment key={time}>
-                    <div className="text-xs text-muted-foreground py-1 px-2 border-t border-r border-border sticky left-0 bg-card z-10 h-[32px] flex items-center">
-                    {time}
-                  </div>
+                    <div
+                      className="sticky left-0 z-10 flex h-[32px] items-center border-t border-r border-border bg-card py-1 px-2 text-[11px] font-medium text-muted-foreground sm:text-xs"
+                      style={{ width: `${TIME_COLUMN_WIDTH}px` }}
+                    >
+                      {time}
+                    </div>
                     {doctors.map((doctor) => {
                       const isDragOver = dragOverSlot?.doctorId === doctor.id && dragOverSlot?.time === time;
                       return (
@@ -1022,7 +1033,6 @@ const Schedule = () => {
                           onDragOver={(e) => handleDragOver(e, doctor.id, time)}
                           onDragLeave={handleDragLeave}
                           onDrop={(e) => handleDrop(e, doctor.id, time)}
-                          data-tour="calendar-slot"
                         >
                           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                           <Plus className="h-4 w-4 text-muted-foreground" />
@@ -1042,14 +1052,13 @@ const Schedule = () => {
               if (doctorIndex === -1) return null;
               
               const topPosition = getAppointmentPosition(appointment.visit.startTime);
-                const doctorCount = doctors.length;
+                const doctorCount = Math.max(doctors.length, 1);
                 // Calculate position to match grid columns exactly
-                // Grid: 100px (time) + repeat(doctorCount, 1fr)
-                // Each doctor column is: (100% - 100px) / doctorCount
-                const margin = 2; // Small margin from borders (in pixels)
-                const columnWidth = `calc((100% - 100px) / ${doctorCount} - ${margin * 2}px)`;
-                // Position: 100px (time column) + (columnWidth * doctorIndex) + margin
-                const leftOffset = `calc(100px + (100% - 100px) * ${doctorIndex} / ${doctorCount} + ${margin}px)`;
+                // Grid: TIME_COLUMN_WIDTH (time) + repeat(doctorCount, 1fr)
+                const margin = isMobile ? 1 : 2; // Small margin from borders (in pixels)
+                const columnWidth = `calc((100% - ${TIME_COLUMN_WIDTH}px) / ${doctorCount} - ${margin * 2}px)`;
+                // Position: TIME_COLUMN_WIDTH (time column) + (columnWidth * doctorIndex) + margin
+                const leftOffset = `calc(${TIME_COLUMN_WIDTH}px + (100% - ${TIME_COLUMN_WIDTH}px) * ${doctorIndex} / ${doctorCount} + ${margin}px)`;
 
               const doctor = doctors.find((d) => d.id === appointment.doctorId);
               const appointmentColor = doctor?.color || "blue";
@@ -1061,7 +1070,7 @@ const Schedule = () => {
                     draggedAppointment?.id === appointment.id ? "opacity-50" : ""
                   }`}
                   style={{
-                    top: `${topPosition + 58 + margin}px`,
+                    top: `${topPosition + headerOffset + margin}px`,
                     left: leftOffset,
                     width: columnWidth,
                     height: `${(appointment.duration / 30) * SLOT_HEIGHT - margin * 2}px`,
@@ -1114,8 +1123,7 @@ const Schedule = () => {
               )}
           </div>
           )}
-        </Card>
-      </div>
+      </Card>
 
       {/* Appointment Dialog */}
       {isAppointmentOpen && selectedSlot && (
@@ -1196,7 +1204,7 @@ const Schedule = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageContainer>
   );
 };
 

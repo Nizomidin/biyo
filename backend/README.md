@@ -15,7 +15,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create an `.env` file (optional – only needed if you wish to keep Google Sheets storage):
+Create an `.env` file (optional – only needed if you wish to customise defaults):
 
 ```
 # Optional: override defaults
@@ -28,17 +28,16 @@ GOOGLE_CLIENT_EMAIL=service-account@project.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 ```
 
-If you provide the Google variables, the backend automatically switches from SQLite to Sheets. Otherwise all data is stored in the `.db` file. When using Sheets, share the spreadsheet with the service-account email and grant **Editor** access.
+If you provide the Google variables, the backend automatically switches from SQLite to Sheets. Otherwise all data is stored locally in the `.db` file. When using Sheets, share the spreadsheet with the service-account email and grant **Editor** access.
 
 ## Run locally
 
 ```bash
-python main.py
-# or
+pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 4000 --reload
 ```
 
-API docs will be available at `http://localhost:4000/docs`.
+The first run creates `backend/data.db` automatically. API docs are served at `http://localhost:4000/docs`.
 
 ## Environment variables
 
@@ -49,8 +48,9 @@ API docs will be available at `http://localhost:4000/docs`.
 ## Deployment tips
 
 - Run behind Nginx or a reverse proxy for HTTPS
-- Use `systemd` or similar process manager for reliability
+- Use `systemd` or a process manager to keep Uvicorn running
 - Keep the `.env` file secure (never commit it)
+- Back up `backend/data.db` regularly or point `SERKOR_DB_PATH` at a managed volume.
 
 ## Health check
 
