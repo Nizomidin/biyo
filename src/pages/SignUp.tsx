@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
-import { store, User, Clinic, Doctor, Subscription } from "@/lib/store";
+import { store, User, Clinic, Doctor, Service, Subscription } from "@/lib/store";
+import { apiClient } from "@/lib/api";
 import { parseISO } from "date-fns";
 import { toast } from "sonner";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
@@ -205,120 +206,191 @@ const SignUp = () => {
   const handleSignUp = async () => {
     setIsLoading(true);
 
-    await Promise.all([
-      store.fetchAllUsersFromAPI(),
-      store.fetchClinicsFromAPI(),
-    ]);
-
-    // Check if user already exists
-    const existingUser = store.getUserByEmail(email);
-    if (existingUser) {
-      toast.info("Аккаунт с таким email уже существует. Переход на страницу входа...");
-      setIsLoading(false);
-      setTimeout(() => {
-        navigate("/login");
-      }, 500);
-      return;
-    }
-
-    // Create or get clinic
-    let clinic: Clinic;
-    const existingClinics = store.getClinics();
-    const existingClinic = existingClinics.find((c) => c.name === clinicName);
-    
-    if (existingClinic) {
-      clinic = existingClinic;
-    } else {
-      clinic = {
-        id: `clinic_${Date.now()}_${Math.random()}`,
-        name: clinicName,
-        createdAt: new Date().toISOString(),
-      };
-      await store.saveClinic(clinic);
-    }
-
-    // Check if clinic already has admin (additional check)
-    if (isAdmin) {
-      const clinicUsers = store.getUsersByClinic(clinic.id);
-      const hasAdmin = clinicUsers.some((u) => u.role === "admin");
-      if (hasAdmin) {
-        toast.error("У этой клиники уже есть администратор");
+    try {
+      // Check if user already exists via API
+      const existingUserFromAPI = await apiClient.getUserByEmail(email);
+      if (existingUserFromAPI) {
+        toast.info("Аккаунт с таким email уже существует. Переход на страницу входа...");
         setIsLoading(false);
+        setTimeout(() => {
+          navigate("/login");
+        }, 500);
         return;
       }
-    }
 
-    // Create user
-    const user: User = {
-      id: `user_${Date.now()}_${Math.random()}`,
-      email,
-      phone: phone.trim(),
-      clinicId: clinic.id,
-      proficiency,
-      role: isAdmin ? "admin" : "user",
-      createdAt: new Date().toISOString(),
-    };
+      // Create or get clinic - save to API first
+      let clinic: Clinic;
+      const existingClinics = await apiClient.getClinics();
+      const existingClinic = existingClinics.find((c) => c.name === clinicName);
+      
+      if (existingClinic) {
+        clinic = existingClinic;
+      } else {
+        clinic = {
+          id: `clinic_${Date.now()}_${Math.random()}`,
+          name: clinicName,
+          createdAt: new Date().toISOString(),
+        };
+        const savedClinic = await apiClient.saveClinic(clinic);
+        if (savedClinic) {
+          clinic = savedClinic;
+          // Cache in localStorage after successful API save
+          await store.saveClinic(clinic, { skipApi: true });
+        }
+      }
 
-    await store.saveUser(user);
-    store.setCurrentUser(user);
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem("user-login-time", Date.now().toString());
-      localStorage.removeItem("onboarding-tour-shown");
-    }
-    
-    // Initialize default subscription if none exists (free trial, monthly, start plan for 1 doctor)
-    const existingSubscription = store.getSubscription(user.clinicId);
-    if (!existingSubscription) {
-      const accountCreatedDate = parseISO(user.createdAt);
-      const trialEndDate = new Date(accountCreatedDate);
-      trialEndDate.setDate(trialEndDate.getDate() + 14); // Trial ends 14 days from account creation
-      
-      const nextPaymentDate = new Date(trialEndDate); // Payment due when trial ends
-      
-      const defaultSubscription: Subscription = {
-        id: `subscription_${Date.now()}`,
-        clinicId: user.clinicId,
-        plan: "start" as const,
-        period: "monthly" as const,
-        startDate: accountCreatedDate.toISOString(),
-        nextPaymentDate: nextPaymentDate.toISOString(),
-        isActive: true,
-        createdAt: accountCreatedDate.toISOString(),
-        isTrial: true,
-        trialEndDate: trialEndDate.toISOString(),
-      };
-      
-      await store.saveSubscription(defaultSubscription);
-    }
-    
-    // If user is not admin, create a doctor profile for them
-    if (!isAdmin) {
-      const doctorColors = ["blue", "emerald", "red", "yellow", "purple"];
-      const randomColor = doctorColors[Math.floor(Math.random() * doctorColors.length)];
-      
-      const doctor: Doctor = {
-        id: `doctor_${Date.now()}_${Math.random()}`,
-        name: email.split("@")[0], // Use email prefix as default name
-        specialization: proficiency || undefined,
-        email: email,
-        userId: user.id, // Link doctor to user account
-        color: randomColor,
+      // Check if clinic already has admin (additional check)
+      if (isAdmin) {
+        const clinicUsers = await apiClient.getUsers(clinic.id);
+        const hasAdmin = clinicUsers.some((u) => u.role === "admin");
+        if (hasAdmin) {
+          toast.error("У этой клиники уже есть администратор");
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      // Create user - save to API first
+      const user: User = {
+        id: `user_${Date.now()}_${Math.random()}`,
+        email,
+        phone: phone.trim(),
         clinicId: clinic.id,
+        proficiency,
+        role: isAdmin ? "admin" : "user",
+        createdAt: new Date().toISOString(),
       };
+
+      const savedUser = await apiClient.saveUser(user);
+      if (!savedUser) {
+        throw new Error("Не удалось сохранить пользователя");
+      }
       
-      await store.saveDoctor(doctor);
+      // Cache in localStorage after successful API save
+      await store.saveUser(savedUser, { skipApi: true });
+      store.setCurrentUser(savedUser);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("user-login-time", Date.now().toString());
+        localStorage.removeItem("onboarding-tour-shown");
+      }
+      
+      // Initialize default subscription if none exists (free trial, monthly, start plan for 1 doctor)
+      // Note: Subscription is stored locally only (no API endpoint yet)
+      const existingSubscription = store.getSubscription(savedUser.clinicId);
+      if (!existingSubscription) {
+        const accountCreatedDate = parseISO(savedUser.createdAt);
+        const trialEndDate = new Date(accountCreatedDate);
+        trialEndDate.setDate(trialEndDate.getDate() + 14); // Trial ends 14 days from account creation
+        
+        const nextPaymentDate = new Date(trialEndDate); // Payment due when trial ends
+        
+        const defaultSubscription: Subscription = {
+          id: `subscription_${Date.now()}`,
+          clinicId: savedUser.clinicId,
+          plan: "start" as const,
+          period: "monthly" as const,
+          startDate: accountCreatedDate.toISOString(),
+          nextPaymentDate: nextPaymentDate.toISOString(),
+          isActive: true,
+          createdAt: accountCreatedDate.toISOString(),
+          isTrial: true,
+          trialEndDate: trialEndDate.toISOString(),
+        };
+        
+        await store.saveSubscription(defaultSubscription);
+      }
+      
+      // If user is not admin, create a doctor profile for them - save to API first
+      if (!isAdmin) {
+        const doctorColors = ["blue", "emerald", "red", "yellow", "purple"];
+        const randomColor = doctorColors[Math.floor(Math.random() * doctorColors.length)];
+        
+        const doctor: Doctor = {
+          id: `doctor_${Date.now()}_${Math.random()}`,
+          name: email.split("@")[0], // Use email prefix as default name
+          specialization: proficiency || undefined,
+          email: email,
+          userId: savedUser.id, // Link doctor to user account
+          color: randomColor,
+          clinicId: clinic.id,
+        };
+        
+        const savedDoctor = await apiClient.saveDoctor(doctor);
+        if (savedDoctor) {
+          // Cache in localStorage after successful API save
+          await store.saveDoctor(savedDoctor, { skipApi: true });
+        }
+      }
+      
+      // Initialize default services for this clinic - save to API first
+      const existingServices = await apiClient.getServices(clinic.id);
+      if (existingServices.length === 0) {
+        const defaultServices: Service[] = [
+          // Лечебная стоматология
+          { id: "therapeutic_1", name: "Пломбирование корневых каналов", defaultPrice: 0, clinicId: clinic.id },
+          { id: "therapeutic_2", name: "Пломбирование передних зубов", defaultPrice: 0, clinicId: clinic.id },
+          { id: "therapeutic_3", name: "Пломбирование боковых зубов", defaultPrice: 0, clinicId: clinic.id },
+          { id: "therapeutic_4", name: "Реставрация зуба", defaultPrice: 0, clinicId: clinic.id },
+          { id: "therapeutic_5", name: "Деветелизирующая паста", defaultPrice: 0, clinicId: clinic.id },
+          { id: "therapeutic_6", name: "Стекловолоконный штифт", defaultPrice: 0, clinicId: clinic.id },
+          
+          // Ортопедическая стоматология
+          { id: "prosthetic_1", name: "Металлокерамическая коронка", defaultPrice: 0, clinicId: clinic.id },
+          { id: "prosthetic_2", name: "Диоксид цирконий", defaultPrice: 0, clinicId: clinic.id },
+          { id: "prosthetic_3", name: "Открыто винтовая коронка на имплантах", defaultPrice: 0, clinicId: clinic.id },
+          { id: "prosthetic_4", name: "Культовая вкладка", defaultPrice: 0, clinicId: clinic.id },
+          { id: "prosthetic_5", name: "Напиленные коронки", defaultPrice: 0, clinicId: clinic.id },
+          { id: "prosthetic_6", name: "Бюгельный протез", defaultPrice: 0, clinicId: clinic.id },
+          { id: "prosthetic_7", name: "Простой съемный протез", defaultPrice: 0, clinicId: clinic.id },
+          { id: "prosthetic_8", name: "Баллочная фиксация на имплантах с диоксид цирконий", defaultPrice: 0, clinicId: clinic.id },
+          { id: "prosthetic_9", name: "Баллочная акриловая фиксация на имплантах", defaultPrice: 0, clinicId: clinic.id },
+          { id: "prosthetic_10", name: "Диоксид цирконий с абатменом", defaultPrice: 0, clinicId: clinic.id },
+          
+          // Хирургическая стоматология
+          { id: "surgical_1", name: "Удаление зуба", defaultPrice: 0, clinicId: clinic.id },
+          { id: "surgical_2", name: "Пластика уздечки", defaultPrice: 0, clinicId: clinic.id },
+          { id: "surgical_3", name: "Удаление ретентрованного зуба", defaultPrice: 0, clinicId: clinic.id },
+          { id: "surgical_4", name: "Удаление зуба мудрости", defaultPrice: 0, clinicId: clinic.id },
+          { id: "surgical_5", name: "Зашивание лунки", defaultPrice: 0, clinicId: clinic.id },
+          
+          // Имплантология
+          { id: "implant_1", name: "Имплантация Dentium", defaultPrice: 0, clinicId: clinic.id },
+          { id: "implant_2", name: "Имплантация Osstem", defaultPrice: 0, clinicId: clinic.id },
+          { id: "implant_3", name: "Имплантация Impro", defaultPrice: 0, clinicId: clinic.id },
+          { id: "implant_4", name: "Формирователь десны", defaultPrice: 0, clinicId: clinic.id },
+          { id: "implant_5", name: "Мультиюниты", defaultPrice: 0, clinicId: clinic.id },
+          { id: "implant_6", name: "Мембрана", defaultPrice: 0, clinicId: clinic.id },
+          { id: "implant_7", name: "Костная пластика", defaultPrice: 0, clinicId: clinic.id },
+          { id: "implant_8", name: "Синус лифтинг", defaultPrice: 0, clinicId: clinic.id },
+          
+          // Одноразовые наборы
+          { id: "disposable_1", name: "Одноразовый набор", defaultPrice: 0, clinicId: clinic.id },
+          { id: "disposable_2", name: "Тесты на гепатит В С и СПИД", defaultPrice: 0, clinicId: clinic.id },
+          { id: "disposable_3", name: "Анестезия", defaultPrice: 0, clinicId: clinic.id },
+          { id: "disposable_4", name: "Рентген", defaultPrice: 0, clinicId: clinic.id },
+        ];
+
+        // Save services to API first, then cache in localStorage
+        for (const service of defaultServices) {
+          const savedService = await apiClient.saveService(service);
+          if (savedService) {
+            await store.saveService(savedService, { skipApi: true });
+          }
+        }
+      }
+      
+      toast.success("Регистрация успешна");
+      setIsLoading(false);
+      
+      // Small delay to ensure state propagates before navigation
+      setTimeout(() => {
+        navigate("/", { replace: true });
+      }, 100);
+    } catch (error) {
+      console.error("Registration error:", error);
+      toast.error(error instanceof Error ? error.message : "Ошибка при регистрации");
+      setIsLoading(false);
     }
-    
-    // Initialize default services for this clinic
-    await store.initializeDefaultServices();
-    
-    toast.success("Регистрация успешна");
-    setIsLoading(false);
-    
-    // Small delay to ensure state propagates before navigation
-    setTimeout(() => {
-      navigate("/", { replace: true });
-    }, 100);
   };
 
   return (

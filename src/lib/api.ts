@@ -15,13 +15,9 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
 
-interface RequestConfig {
-  method?: HttpMethod;
-  query?: Record<string, string | number | boolean | undefined>;
-  body?: unknown;
-  headers?: HeadersInit;
-  signal?: AbortSignal;
-  timeoutMs?: number;
+interface ApiResponse<T> {
+  data?: T;
+  error?: string;
 }
 
 const isJsonResponse = (response: Response) => {
@@ -212,8 +208,12 @@ class ApiClient {
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
-    const result = await this.request<User>(`/users?email=${email}`);
-    return result.data || null;
+    const result = await this.request<User[]>(`/users?email=${email}`);
+    // Backend returns an array, get first item
+    if (result.data && Array.isArray(result.data) && result.data.length > 0) {
+      return result.data[0];
+    }
+    return null;
   }
 
   async saveUser(user: User): Promise<User | null> {
@@ -231,8 +231,15 @@ class ApiClient {
   }
 
   async getClinicById(id: string): Promise<Clinic | null> {
-    const result = await this.request<Clinic>(`/clinics?id=${id}`);
-    return result.data || null;
+    const result = await this.request<Clinic | Clinic[]>(`/clinics?id=${id}`);
+    if (result.data) {
+      // Backend may return single object or array
+      if (Array.isArray(result.data)) {
+        return result.data.length > 0 ? result.data[0] : null;
+      }
+      return result.data;
+    }
+    return null;
   }
 
   async saveClinic(clinic: Clinic): Promise<Clinic | null> {
@@ -250,10 +257,14 @@ class ApiClient {
     method?: Payment["method"],
     date?: string,
   ): Promise<Payment> {
-    return this.request<Payment>("/payments", {
+    const result = await this.request<Payment>("/payments", {
       method: "POST",
-      body: { visitId, amount, method, date },
+      body: JSON.stringify({ visitId, amount, method, date }),
     });
+    if (!result.data) {
+      throw new Error(result.error || "Failed to add payment");
+    }
+    return result.data;
   }
 
   async deletePayment(paymentId: string): Promise<void> {
@@ -262,17 +273,25 @@ class ApiClient {
 
   // OTP
   async sendOTP(phone: string): Promise<{ message: string; otp?: string }> {
-    return this.request<{ message: string; otp?: string }>("/users/otp/send", {
+    const result = await this.request<{ message: string; otp?: string }>("/users/otp/send", {
       method: "POST",
-      body: { phone },
+      body: JSON.stringify({ phone }),
     });
+    if (!result.data) {
+      throw new Error(result.error || "Failed to send OTP");
+    }
+    return result.data;
   }
 
   async verifyOTP(phone: string, otp: string): Promise<{ verified: boolean }> {
-    return this.request<{ verified: boolean }>("/users/otp/verify", {
+    const result = await this.request<{ verified: boolean }>("/users/otp/verify", {
       method: "POST",
-      body: { phone, otp },
+      body: JSON.stringify({ phone, otp }),
     });
+    if (!result.data) {
+      throw new Error(result.error || "Failed to verify OTP");
+    }
+    return result.data;
   }
 }
 

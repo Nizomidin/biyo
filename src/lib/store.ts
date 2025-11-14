@@ -300,7 +300,7 @@ class Store {
     return doctors;
   }
 
-  async saveDoctor(doctor: Doctor): Promise<void> {
+  async saveDoctor(doctor: Doctor, options?: { skipApi?: boolean }): Promise<void> {
     // Ensure clinicId is set from current user if not provided
     if (!doctor.clinicId) {
       const clinicId = this.getCurrentClinicId();
@@ -323,7 +323,9 @@ class Store {
     window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'doctors' } }));
     
     // Sync to API in background
-    runApiSync((client) => client.saveDoctor(doctor), 'saveDoctor');
+    if (!options?.skipApi) {
+      runApiSync((client) => client.saveDoctor(doctor), 'saveDoctor');
+    }
   }
 
   deleteDoctor(doctorId: string): void {
@@ -345,7 +347,7 @@ class Store {
     return services;
   }
 
-  async saveService(service: Service): Promise<void> {
+  async saveService(service: Service, options?: { skipApi?: boolean }): Promise<void> {
     // Ensure clinicId is set from current user if not provided
     if (!service.clinicId) {
       const clinicId = this.getCurrentClinicId();
@@ -368,7 +370,9 @@ class Store {
     window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'services' } }));
     
     // Sync to API in background
-    runApiSync((client) => client.saveService(service), 'saveService');
+    if (!options?.skipApi) {
+      runApiSync((client) => client.saveService(service), 'saveService');
+    }
   }
 
   deleteService(serviceId: string): void {
