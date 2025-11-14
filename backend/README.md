@@ -1,11 +1,10 @@
 # Serkor Backend (Python)
 
-FastAPI service that stores clinic data in Google Sheets.
+FastAPI service that stores clinic data in a local SQLite database by default (with optional Google Sheets sync).
 
 ## Prerequisites
 
 - Python 3.11+
-- Google service account with access to the target spreadsheet
 
 ## Setup
 
@@ -16,16 +15,20 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create an `.env` file (see `.env.example` below):
+Create an `.env` file (optional – only needed if you wish to keep Google Sheets storage):
 
 ```
+# Optional: override defaults
+BACKEND_PORT=4000
+SERKOR_DB_PATH=backend/data.db
+
+# Optional: enable Google Sheets sync instead of SQLite
 GOOGLE_SHEETS_ID=your-spreadsheet-id
 GOOGLE_CLIENT_EMAIL=service-account@project.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
-BACKEND_PORT=4000
 ```
 
-Share the spreadsheet with the service account email and give it **Editor** access.
+If you provide the Google variables, the backend automatically switches from SQLite to Sheets. Otherwise all data is stored in the `.db` file. When using Sheets, share the spreadsheet with the service-account email and grant **Editor** access.
 
 ## Run locally
 
@@ -39,10 +42,9 @@ API docs will be available at `http://localhost:4000/docs`.
 
 ## Environment variables
 
-- `GOOGLE_SHEETS_ID` – Spreadsheet ID
-- `GOOGLE_CLIENT_EMAIL` – Service account email
-- `GOOGLE_PRIVATE_KEY` – Private key (escape newlines with `\n`)
+- `SERKOR_DB_PATH` – Path to the SQLite database file (defaults to `backend/data.db`)
 - `BACKEND_PORT` – Optional, defaults to 4000
+- `GOOGLE_SHEETS_ID`, `GOOGLE_CLIENT_EMAIL`, `GOOGLE_PRIVATE_KEY` – (optional) enable Google Sheets backend instead of SQLite
 
 ## Deployment tips
 
