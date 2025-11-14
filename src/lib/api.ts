@@ -112,7 +112,7 @@ class ApiClient {
     return result.data || [];
   }
 
-  async saveDoctor(doctor: Doctor): Promise<Doctor | null> {
+  async saveDoctor(doctor: Doctor | Omit<Doctor, 'id'>): Promise<Doctor | null> {
     const result = await this.request<Doctor>('/doctors', {
       method: 'POST',
       body: JSON.stringify(doctor),
@@ -135,7 +135,7 @@ class ApiClient {
     return result.data || [];
   }
 
-  async saveService(service: Service): Promise<Service | null> {
+  async saveService(service: Service | Omit<Service, 'id'>): Promise<Service | null> {
     const result = await this.request<Service>('/services', {
       method: 'POST',
       body: JSON.stringify(service),
@@ -216,7 +216,7 @@ class ApiClient {
     return null;
   }
 
-  async saveUser(user: User): Promise<User | null> {
+  async saveUser(user: User | Omit<User, 'id'>): Promise<User | null> {
     const result = await this.request<User>('/users', {
       method: 'POST',
       body: JSON.stringify(user),

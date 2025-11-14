@@ -252,8 +252,8 @@ const SignUp = () => {
       }
 
       // Create user - save to API first
-      const user: User = {
-        id: `user_${Date.now()}_${Math.random()}`,
+      // Don't provide id - let backend generate it for new users
+      const newUser: Omit<User, 'id'> = {
         email,
         phone: phone.trim(),
         clinicId: clinic.id,
@@ -262,7 +262,7 @@ const SignUp = () => {
         createdAt: new Date().toISOString(),
       };
 
-      const savedUser = await apiClient.saveUser(user);
+      const savedUser = await apiClient.saveUser(newUser);
       if (!savedUser) {
         throw new Error("Не удалось сохранить пользователя");
       }
@@ -306,8 +306,8 @@ const SignUp = () => {
         const doctorColors = ["blue", "emerald", "red", "yellow", "purple"];
         const randomColor = doctorColors[Math.floor(Math.random() * doctorColors.length)];
         
-        const doctor: Doctor = {
-          id: `doctor_${Date.now()}_${Math.random()}`,
+        // Don't provide id - let backend generate it for new doctors
+        const newDoctor: Omit<Doctor, 'id'> = {
           name: email.split("@")[0], // Use email prefix as default name
           specialization: proficiency || undefined,
           email: email,
@@ -316,7 +316,7 @@ const SignUp = () => {
           clinicId: clinic.id,
         };
         
-        const savedDoctor = await apiClient.saveDoctor(doctor);
+        const savedDoctor = await apiClient.saveDoctor(newDoctor);
         if (savedDoctor) {
           // Cache in localStorage after successful API save
           await store.saveDoctor(savedDoctor, { skipApi: true });
@@ -326,49 +326,50 @@ const SignUp = () => {
       // Initialize default services for this clinic - save to API first
       const existingServices = await apiClient.getServices(clinic.id);
       if (existingServices.length === 0) {
-        const defaultServices: Service[] = [
+        // Don't provide id - let backend generate it for new services
+        const defaultServices: Omit<Service, 'id'>[] = [
           // Лечебная стоматология
-          { id: "therapeutic_1", name: "Пломбирование корневых каналов", defaultPrice: 0, clinicId: clinic.id },
-          { id: "therapeutic_2", name: "Пломбирование передних зубов", defaultPrice: 0, clinicId: clinic.id },
-          { id: "therapeutic_3", name: "Пломбирование боковых зубов", defaultPrice: 0, clinicId: clinic.id },
-          { id: "therapeutic_4", name: "Реставрация зуба", defaultPrice: 0, clinicId: clinic.id },
-          { id: "therapeutic_5", name: "Деветелизирующая паста", defaultPrice: 0, clinicId: clinic.id },
-          { id: "therapeutic_6", name: "Стекловолоконный штифт", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Пломбирование корневых каналов", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Пломбирование передних зубов", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Пломбирование боковых зубов", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Реставрация зуба", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Деветелизирующая паста", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Стекловолоконный штифт", defaultPrice: 0, clinicId: clinic.id },
           
           // Ортопедическая стоматология
-          { id: "prosthetic_1", name: "Металлокерамическая коронка", defaultPrice: 0, clinicId: clinic.id },
-          { id: "prosthetic_2", name: "Диоксид цирконий", defaultPrice: 0, clinicId: clinic.id },
-          { id: "prosthetic_3", name: "Открыто винтовая коронка на имплантах", defaultPrice: 0, clinicId: clinic.id },
-          { id: "prosthetic_4", name: "Культовая вкладка", defaultPrice: 0, clinicId: clinic.id },
-          { id: "prosthetic_5", name: "Напиленные коронки", defaultPrice: 0, clinicId: clinic.id },
-          { id: "prosthetic_6", name: "Бюгельный протез", defaultPrice: 0, clinicId: clinic.id },
-          { id: "prosthetic_7", name: "Простой съемный протез", defaultPrice: 0, clinicId: clinic.id },
-          { id: "prosthetic_8", name: "Баллочная фиксация на имплантах с диоксид цирконий", defaultPrice: 0, clinicId: clinic.id },
-          { id: "prosthetic_9", name: "Баллочная акриловая фиксация на имплантах", defaultPrice: 0, clinicId: clinic.id },
-          { id: "prosthetic_10", name: "Диоксид цирконий с абатменом", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Металлокерамическая коронка", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Диоксид цирконий", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Открыто винтовая коронка на имплантах", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Культовая вкладка", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Напиленные коронки", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Бюгельный протез", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Простой съемный протез", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Баллочная фиксация на имплантах с диоксид цирконий", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Баллочная акриловая фиксация на имплантах", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Диоксид цирконий с абатменом", defaultPrice: 0, clinicId: clinic.id },
           
           // Хирургическая стоматология
-          { id: "surgical_1", name: "Удаление зуба", defaultPrice: 0, clinicId: clinic.id },
-          { id: "surgical_2", name: "Пластика уздечки", defaultPrice: 0, clinicId: clinic.id },
-          { id: "surgical_3", name: "Удаление ретентрованного зуба", defaultPrice: 0, clinicId: clinic.id },
-          { id: "surgical_4", name: "Удаление зуба мудрости", defaultPrice: 0, clinicId: clinic.id },
-          { id: "surgical_5", name: "Зашивание лунки", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Удаление зуба", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Пластика уздечки", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Удаление ретентрованного зуба", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Удаление зуба мудрости", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Зашивание лунки", defaultPrice: 0, clinicId: clinic.id },
           
           // Имплантология
-          { id: "implant_1", name: "Имплантация Dentium", defaultPrice: 0, clinicId: clinic.id },
-          { id: "implant_2", name: "Имплантация Osstem", defaultPrice: 0, clinicId: clinic.id },
-          { id: "implant_3", name: "Имплантация Impro", defaultPrice: 0, clinicId: clinic.id },
-          { id: "implant_4", name: "Формирователь десны", defaultPrice: 0, clinicId: clinic.id },
-          { id: "implant_5", name: "Мультиюниты", defaultPrice: 0, clinicId: clinic.id },
-          { id: "implant_6", name: "Мембрана", defaultPrice: 0, clinicId: clinic.id },
-          { id: "implant_7", name: "Костная пластика", defaultPrice: 0, clinicId: clinic.id },
-          { id: "implant_8", name: "Синус лифтинг", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Имплантация Dentium", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Имплантация Osstem", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Имплантация Impro", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Формирователь десны", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Мультиюниты", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Мембрана", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Костная пластика", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Синус лифтинг", defaultPrice: 0, clinicId: clinic.id },
           
           // Одноразовые наборы
-          { id: "disposable_1", name: "Одноразовый набор", defaultPrice: 0, clinicId: clinic.id },
-          { id: "disposable_2", name: "Тесты на гепатит В С и СПИД", defaultPrice: 0, clinicId: clinic.id },
-          { id: "disposable_3", name: "Анестезия", defaultPrice: 0, clinicId: clinic.id },
-          { id: "disposable_4", name: "Рентген", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Одноразовый набор", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Тесты на гепатит В С и СПИД", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Анестезия", defaultPrice: 0, clinicId: clinic.id },
+          { name: "Рентген", defaultPrice: 0, clinicId: clinic.id },
         ];
 
         // Save services to API first, then cache in localStorage
