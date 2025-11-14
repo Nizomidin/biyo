@@ -242,7 +242,7 @@ class ApiClient {
     return null;
   }
 
-  async saveClinic(clinic: Clinic): Promise<Clinic | null> {
+  async saveClinic(clinic: Clinic | Omit<Clinic, 'id'>): Promise<Clinic | null> {
     const result = await this.request<Clinic>('/clinics', {
       method: 'POST',
       body: JSON.stringify(clinic),

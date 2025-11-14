@@ -226,17 +226,18 @@ const SignUp = () => {
       if (existingClinic) {
         clinic = existingClinic;
       } else {
-        clinic = {
-          id: `clinic_${Date.now()}_${Math.random()}`,
+        // Don't provide id - let backend generate it for new clinics
+        const newClinic: Omit<Clinic, 'id'> = {
           name: clinicName,
           createdAt: new Date().toISOString(),
         };
-        const savedClinic = await apiClient.saveClinic(clinic);
-        if (savedClinic) {
-          clinic = savedClinic;
-          // Cache in localStorage after successful API save
-          await store.saveClinic(clinic, { skipApi: true });
+        const savedClinic = await apiClient.saveClinic(newClinic);
+        if (!savedClinic) {
+          throw new Error("Не удалось создать клинику");
         }
+        clinic = savedClinic;
+        // Cache in localStorage after successful API save
+        await store.saveClinic(clinic, { skipApi: true });
       }
 
       // Check if clinic already has admin (additional check)
