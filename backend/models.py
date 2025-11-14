@@ -15,7 +15,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .database import Base
+try:
+    from database import Base  # when executed as top-level module
+except ImportError:  # pragma: no cover - package-relative fallback
+    from .database import Base  # noqa: F401
 
 
 class Clinic(Base):
