@@ -1,9 +1,12 @@
 // Data store with localStorage persistence and API sync
 // Lazy import apiClient to avoid circular dependency
-let apiClientPromise: Promise<any> | null = null;
-const getApiClient = async () => {
+type ApiClientInstance = typeof import("./api") extends { apiClient: infer Client }
+  ? Client
+  : never;
+let apiClientPromise: Promise<ApiClientInstance> | null = null;
+const getApiClient = async (): Promise<ApiClientInstance> => {
   if (!apiClientPromise) {
-    apiClientPromise = import('./api').then(module => module.apiClient);
+    apiClientPromise = import("./api").then((module) => module.apiClient);
   }
   return apiClientPromise;
 };
@@ -12,8 +15,7 @@ const getApiClient = async () => {
 // Default to true for full cross-device sync (works in both dev and prod)
 // Set VITE_ENABLE_API_SYNC=false to disable
 const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC === 'true';
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
-type ApiClientInstance = Awaited<ReturnType<typeof getApiClient>>;
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 const MAX_API_SYNC_FAILURES = 3;
 let apiSyncEnabled = ENABLE_API_SYNC;
 let apiSyncFailureCount = 0;

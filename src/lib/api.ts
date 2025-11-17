@@ -11,14 +11,9 @@ import type {
   User,
   Clinic,
   Payment,
-} from './store';
+} from "./store";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api';
-
-interface ApiResponse<T> {
-  data?: T;
-  error?: string;
-}
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 
 const isJsonResponse = (response: Response) => {
   const contentType = response.headers.get("content-type") ?? "";
@@ -30,13 +25,31 @@ const extractErrorMessage = (payload: unknown, fallback: string): string => {
     return payload;
   }
   if (payload && typeof payload === "object") {
-    const payloadObj = payload as { error?: unknown; message?: unknown; detail?: unknown };
+    const payloadObj = payload as {
+      error?: unknown;
+      message?: unknown;
+      detail?: unknown;
+    };
     const maybeError = payloadObj.detail ?? payloadObj.error ?? payloadObj.message;
     if (typeof maybeError === "string" && maybeError.trim().length > 0) {
       return maybeError;
     }
   }
   return fallback;
+};
+
+const buildQueryString = (
+  params: Record<string, string | number | boolean | undefined | null> = {},
+) => {
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") {
+      return;
+    }
+    searchParams.append(key, String(value));
+  });
+  const query = searchParams.toString();
+  return query ? `?${query}` : "";
 };
 
 export class ApiError extends Error {
@@ -56,198 +69,239 @@ export class ApiError extends Error {
 }
 
 class ApiClient {
-  private async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<ApiResponse<T>> {
+  private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const url = endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${endpoint}`;
+
     try {
-      const url = `${API_BASE_URL}${endpoint}`;
       const response = await fetch(url, {
         ...options,
         headers: {
-          'Content-Type': 'application/json',
+          Accept: "application/json",
+          "Content-Type": "application/json",
           ...options.headers,
         },
       });
 
-      if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
+      let payload: unknown = null;
+      if (response.status !== 204) {
+        if (isJsonResponse(response)) {
+          payload = await response.json();
+        } else {
+          payload = await response.text();
+        }
       }
 
-      const data = await response.json();
-      return { data };
+      if (!response.ok) {
+        const message = extractErrorMessage(
+          payload,
+          `API request failed with status ${response.status}`,
+        );
+        throw new ApiError(response.status, message, payload);
+      }
+
+      return payload as T;
     } catch (error) {
-      console.error('API request failed:', error);
-      return { error: error instanceof Error ? error.message : 'Unknown error' };
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      const message =
+        error instanceof Error ? error.message : "Unexpected error while calling API";
+      throw new ApiError(0, message, error);
     }
   }
 
   // Patients
   async getPatients(clinicId?: string): Promise<Patient[]> {
-    const params = clinicId ? `?clinicId=${clinicId}` : '';
-    const result = await this.request<Patient[]>(`/patients${params}`);
-    return result.data || [];
+    try {
+      return await this.request<Patient[]>(`/patients${buildQueryString({ clinicId })}`);
+    } catch (error) {
+      console.error("Failed to fetch patients:", error);
+      return [];
+    }
   }
 
   async savePatient(patient: Patient): Promise<Patient | null> {
-    const result = await this.request<Patient>('/patients', {
-      method: 'POST',
+    const result = await this.request<Patient>("/patients", {
+      method: "POST",
       body: JSON.stringify(patient),
     });
-    return result.data || null;
+    return result ?? null;
   }
 
   async deletePatient(patientId: string, clinicId: string): Promise<boolean> {
     const result = await this.request<{ success: boolean }>(
-      `/patients?id=${patientId}&clinicId=${clinicId}`,
-      { method: 'DELETE' }
+      `/patients${buildQueryString({ id: patientId, clinicId })}`,
+      { method: "DELETE" },
     );
-    return result.data?.success || false;
+    return Boolean(result?.success);
   }
 
   // Doctors
   async getDoctors(clinicId?: string): Promise<Doctor[]> {
-    const params = clinicId ? `?clinicId=${clinicId}` : '';
-    const result = await this.request<Doctor[]>(`/doctors${params}`);
-    return result.data || [];
+    try {
+      return await this.request<Doctor[]>(`/doctors${buildQueryString({ clinicId })}`);
+    } catch (error) {
+      console.error("Failed to fetch doctors:", error);
+      return [];
+    }
   }
 
   async saveDoctor(doctor: Doctor | Omit<Doctor, 'id'>): Promise<Doctor | null> {
-    const result = await this.request<Doctor>('/doctors', {
-      method: 'POST',
+    const result = await this.request<Doctor>("/doctors", {
+      method: "POST",
       body: JSON.stringify(doctor),
     });
-    return result.data || null;
+    return result ?? null;
   }
 
   async deleteDoctor(doctorId: string, clinicId: string): Promise<boolean> {
     const result = await this.request<{ success: boolean }>(
-      `/doctors?id=${doctorId}&clinicId=${clinicId}`,
-      { method: 'DELETE' }
+      `/doctors${buildQueryString({ id: doctorId, clinicId })}`,
+      { method: "DELETE" },
     );
-    return result.data?.success || false;
+    return Boolean(result?.success);
   }
 
   // Services
   async getServices(clinicId?: string): Promise<Service[]> {
-    const params = clinicId ? `?clinicId=${clinicId}` : '';
-    const result = await this.request<Service[]>(`/services${params}`);
-    return result.data || [];
+    try {
+      return await this.request<Service[]>(`/services${buildQueryString({ clinicId })}`);
+    } catch (error) {
+      console.error("Failed to fetch services:", error);
+      return [];
+    }
   }
 
   async saveService(service: Service | Omit<Service, 'id'>): Promise<Service | null> {
-    const result = await this.request<Service>('/services', {
-      method: 'POST',
+    const result = await this.request<Service>("/services", {
+      method: "POST",
       body: JSON.stringify(service),
     });
-    return result.data || null;
+    return result ?? null;
   }
 
   async deleteService(serviceId: string, clinicId: string): Promise<boolean> {
     const result = await this.request<{ success: boolean }>(
-      `/services?id=${serviceId}&clinicId=${clinicId}`,
-      { method: 'DELETE' }
+      `/services${buildQueryString({ id: serviceId, clinicId })}`,
+      { method: "DELETE" },
     );
-    return result.data?.success || false;
+    return Boolean(result?.success);
   }
 
   // Visits
   async getVisits(clinicId?: string): Promise<Visit[]> {
-    const params = clinicId ? `?clinicId=${clinicId}` : '';
-    const result = await this.request<Visit[]>(`/visits${params}`);
-    return result.data || [];
+    try {
+      return await this.request<Visit[]>(`/visits${buildQueryString({ clinicId })}`);
+    } catch (error) {
+      console.error("Failed to fetch visits:", error);
+      return [];
+    }
   }
 
   async saveVisit(visit: Visit): Promise<Visit | null> {
-    const result = await this.request<Visit>('/visits', {
-      method: 'POST',
+    const result = await this.request<Visit>("/visits", {
+      method: "POST",
       body: JSON.stringify(visit),
     });
-    return result.data || null;
+    return result ?? null;
   }
 
   async deleteVisit(visitId: string, clinicId: string): Promise<boolean> {
     const result = await this.request<{ success: boolean }>(
-      `/visits?id=${visitId}&clinicId=${clinicId}`,
-      { method: 'DELETE' }
+      `/visits${buildQueryString({ id: visitId, clinicId })}`,
+      { method: "DELETE" },
     );
-    return result.data?.success || false;
+    return Boolean(result?.success);
   }
 
   // Files
   async getFiles(patientId?: string, clinicId?: string): Promise<PatientFile[]> {
-    const params = new URLSearchParams();
-    if (patientId) params.append('patientId', patientId);
-    if (clinicId) params.append('clinicId', clinicId);
-    const query = params.toString() ? `?${params.toString()}` : '';
-    const result = await this.request<PatientFile[]>(`/files${query}`);
-    return result.data || [];
+    try {
+      return await this.request<PatientFile[]>(
+        `/files${buildQueryString({ patientId, clinicId })}`,
+      );
+    } catch (error) {
+      console.error("Failed to fetch files:", error);
+      return [];
+    }
   }
 
   async saveFile(file: PatientFile): Promise<PatientFile | null> {
-    const result = await this.request<PatientFile>('/files', {
-      method: 'POST',
+    const result = await this.request<PatientFile>("/files", {
+      method: "POST",
       body: JSON.stringify(file),
     });
-    return result.data || null;
+    return result ?? null;
   }
 
   async deleteFile(fileId: string, clinicId: string): Promise<boolean> {
     const result = await this.request<{ success: boolean }>(
-      `/files?id=${fileId}&clinicId=${clinicId}`,
-      { method: 'DELETE' }
+      `/files${buildQueryString({ id: fileId, clinicId })}`,
+      { method: "DELETE" },
     );
-    return result.data?.success || false;
+    return Boolean(result?.success);
   }
 
   // Users
   async getUsers(clinicId?: string): Promise<User[]> {
-    const params = clinicId ? `?clinicId=${clinicId}` : '';
-    const result = await this.request<User[]>(`/users${params}`);
-    return result.data || [];
+    try {
+      return await this.request<User[]>(`/users${buildQueryString({ clinicId })}`);
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+      return [];
+    }
   }
 
   async getUserByEmail(email: string): Promise<User | null> {
-    const result = await this.request<User[]>(`/users?email=${email}`);
-    // Backend returns an array, get first item
-    if (result.data && Array.isArray(result.data) && result.data.length > 0) {
-      return result.data[0];
+    const result = await this.request<User | User[] | null>(
+      `/users${buildQueryString({ email })}`,
+    );
+    if (!result) {
+      return null;
     }
-    return null;
+    if (Array.isArray(result)) {
+      return result[0] ?? null;
+    }
+    return result;
   }
 
   async saveUser(user: User | Omit<User, 'id'>): Promise<User | null> {
-    const result = await this.request<User>('/users', {
-      method: 'POST',
+    const result = await this.request<User>("/users", {
+      method: "POST",
       body: JSON.stringify(user),
     });
-    return result.data || null;
+    return result ?? null;
   }
 
   // Clinics
   async getClinics(): Promise<Clinic[]> {
-    const result = await this.request<Clinic[]>('/clinics');
-    return result.data || [];
+    try {
+      return await this.request<Clinic[]>("/clinics");
+    } catch (error) {
+      console.error("Failed to fetch clinics:", error);
+      return [];
+    }
   }
 
   async getClinicById(id: string): Promise<Clinic | null> {
-    const result = await this.request<Clinic | Clinic[]>(`/clinics?id=${id}`);
-    if (result.data) {
-      // Backend may return single object or array
-      if (Array.isArray(result.data)) {
-        return result.data.length > 0 ? result.data[0] : null;
-      }
-      return result.data;
+    const result = await this.request<Clinic | Clinic[] | null>(
+      `/clinics${buildQueryString({ id })}`,
+    );
+    if (!result) {
+      return null;
     }
-    return null;
+    if (Array.isArray(result)) {
+      return result[0] ?? null;
+    }
+    return result;
   }
 
   async saveClinic(clinic: Clinic | Omit<Clinic, 'id'>): Promise<Clinic | null> {
-    const result = await this.request<Clinic>('/clinics', {
-      method: 'POST',
+    const result = await this.request<Clinic>("/clinics", {
+      method: "POST",
       body: JSON.stringify(clinic),
     });
-    return result.data || null;
+    return result ?? null;
   }
 
   // Payments
@@ -257,41 +311,29 @@ class ApiClient {
     method?: Payment["method"],
     date?: string,
   ): Promise<Payment> {
-    const result = await this.request<Payment>("/payments", {
+    return this.request<Payment>("/payments", {
       method: "POST",
       body: JSON.stringify({ visitId, amount, method, date }),
     });
-    if (!result.data) {
-      throw new Error(result.error || "Failed to add payment");
-    }
-    return result.data;
   }
 
   async deletePayment(paymentId: string): Promise<void> {
-    await this.request<void>(`/payments/${paymentId}`, { method: "DELETE" });
+    await this.request<{ success?: boolean }>(`/payments/${paymentId}`, { method: "DELETE" });
   }
 
   // OTP
   async sendOTP(phone: string): Promise<{ message: string; otp?: string }> {
-    const result = await this.request<{ message: string; otp?: string }>("/users/otp/send", {
+    return this.request<{ message: string; otp?: string }>("/users/otp/send", {
       method: "POST",
       body: JSON.stringify({ phone }),
     });
-    if (!result.data) {
-      throw new Error(result.error || "Failed to send OTP");
-    }
-    return result.data;
   }
 
   async verifyOTP(phone: string, otp: string): Promise<{ verified: boolean }> {
-    const result = await this.request<{ verified: boolean }>("/users/otp/verify", {
+    return this.request<{ verified: boolean }>("/users/otp/verify", {
       method: "POST",
       body: JSON.stringify({ phone, otp }),
     });
-    if (!result.data) {
-      throw new Error(result.error || "Failed to verify OTP");
-    }
-    return result.data;
   }
 }
 
