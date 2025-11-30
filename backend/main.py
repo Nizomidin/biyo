@@ -274,8 +274,8 @@ def upsert_patient(payload: schemas.PatientPayload, db: Session = Depends(get_db
 
     patient.name = payload.name
     patient.phone = payload.phone
-    patient.email = payload.email
-    patient.date_of_birth = payload.dateOfBirth
+    patient.email = (payload.email or "").strip() if payload.email else ""
+    patient.date_of_birth = payload.dateOfBirth if payload.dateOfBirth else datetime.utcnow()
     patient.is_child = payload.isChild
     patient.address = payload.address
     patient.notes = payload.notes

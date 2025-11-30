@@ -109,8 +109,8 @@ class PatientPayload(BaseModel):
     id: Optional[str] = None
     name: str
     phone: str
-    email: EmailStr
-    dateOfBirth: datetime
+    email: Optional[EmailStr] = ""
+    dateOfBirth: Optional[datetime] = None
     isChild: bool = False
     address: Optional[str] = None
     notes: Optional[str] = None

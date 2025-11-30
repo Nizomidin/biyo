@@ -1318,8 +1318,16 @@ function AddDoctorDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name) {
+    
+    // Validate required fields
+    if (!name || !name.trim()) {
       toast.error("Введите имя врача");
+      return;
+    }
+
+    // Validate email format if provided
+    if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Введите корректный email адрес");
       return;
     }
 
@@ -1331,10 +1339,10 @@ function AddDoctorDialog({
 
     const doctorData: Doctor = {
       id: doctor?.id || `doctor_${Date.now()}_${Math.random()}`,
-      name,
-      specialization: specialization || undefined,
-      email: email || undefined,
-      phone: phone || undefined,
+      name: name.trim(),
+      specialization: specialization?.trim() || undefined,
+      email: email?.trim() || undefined,
+      phone: phone?.trim() || undefined,
       color,
       clinicId,
     };
@@ -1877,19 +1885,22 @@ function AppointmentDialog({
   };
 
   const handleCreatePatient = async () => {
-    if (!newPatientName) {
+    // Validate required fields
+    if (!newPatientName || !newPatientName.trim()) {
       toast.error("Введите имя пациента");
       return;
     }
+    
     const clinicId = store.getCurrentClinicId();
     if (!clinicId) {
       toast.error("Не удалось определить клинику. Повторите попытку после входа.");
       return;
     }
+    
     const newPatient: Patient = {
       id: `patient_${Date.now()}_${Math.random()}`,
-      name: newPatientName,
-      phone: newPatientPhone || "",
+      name: newPatientName.trim(),
+      phone: newPatientPhone?.trim() || "",
       email: "",
       dateOfBirth: new Date().toISOString(),
       isChild: false,

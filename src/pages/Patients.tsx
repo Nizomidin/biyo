@@ -434,23 +434,42 @@ function AddPatientDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !phone || !email || !dateOfBirth) {
-      toast.error("Заполните все обязательные поля");
+    
+    // Validate required fields
+    if (!name || !name.trim()) {
+      toast.error("Введите ФИО пациента");
+      return;
+    }
+    if (!phone || !phone.trim()) {
+      toast.error("Введите номер телефона пациента");
+      return;
+    }
+
+    // Validate email format if provided
+    if (email && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast.error("Введите корректный email адрес");
+      return;
+    }
+
+    const clinicId = store.getCurrentClinicId();
+    if (!clinicId) {
+      toast.error("Не удалось определить клинику. Повторите попытку после входа.");
       return;
     }
 
     const patient: Patient = {
       id: `patient_${Date.now()}_${Math.random()}`,
-      name,
-      phone,
-      email,
-      dateOfBirth,
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email.trim() || "",
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth).toISOString() : new Date().toISOString(),
       isChild,
-      address,
-      notes,
+      address: address.trim() || undefined,
+      notes: notes.trim() || undefined,
       teeth,
-      services: selectedServices,
-      balance: price ? parseFloat(price) || 0 : 0,
+      services: [], // Services and price will be added later when patient comes
+      balance: 0, // Price will be added later when patient comes
+      clinicId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -473,13 +492,6 @@ function AddPatientDialog({
       setAddress("");
       setNotes("");
       setTeeth([]);
-      setSelectedServices([]);
-      setPrice("");
-      setVisitNotes("");
-      setServiceSearchOpen(false);
-      setIsCreatingService(false);
-      setNewServiceName("");
-      setServiceSearchQuery("");
       onOpenChange(false);
     } catch (error) {
       console.error('Failed to save patient:', error);
@@ -525,26 +537,25 @@ function AddPatientDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor="email">
-                Email <span className="text-destructive">*</span>
+                Email
               </Label>
               <Input
                 id="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required
+                placeholder="email@example.com"
               />
             </div>
             <div className="space-y-2">
               <Label htmlFor="dob">
-                Дата рождения <span className="text-destructive">*</span>
+                Дата рождения
               </Label>
               <Input
                 id="dob"
                 type="date"
                 value={dateOfBirth}
                 onChange={(e) => setDateOfBirth(e.target.value)}
-                required
               />
             </div>
           </div>
@@ -579,6 +590,9 @@ function AddPatientDialog({
 
           <div className="space-y-4 border-t pt-4">
             <Label>Зубная карта</Label>
+            <p className="text-sm text-muted-foreground mb-2">
+              Зубная карта может быть заполнена позже при визите пациента
+            </p>
             <ToothChart
               teeth={teeth}
               isChild={isChild}
@@ -586,143 +600,11 @@ function AddPatientDialog({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label>Услуги</Label>
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Input
-                  type="text"
-                  placeholder="Поиск услуги..."
-                  value={serviceSearchQuery}
-                  onChange={(e) => {
-                    setServiceSearchQuery(e.target.value);
-                    setServiceSearchOpen(true);
-                  }}
-                  onFocus={() => {
-                    setServiceSearchOpen(true);
-                  }}
-                  className="w-full"
-                />
-                {serviceSearchOpen && (
-                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-[300px] overflow-auto">
-                    <Command>
-                      <CommandList>
-                        {(() => {
-                          const filtered = serviceSearchQuery 
-                            ? services.filter((service) =>
-                                service.name.toLowerCase().includes(serviceSearchQuery.toLowerCase())
-                              )
-                            : services;
-                          return filtered.length === 0 ? (
-                            <CommandEmpty>
-                              <div className="py-4 text-center">
-                                <p className="text-sm text-muted-foreground">
-                                  Услуга не найдена
-                                </p>
-                              </div>
-                            </CommandEmpty>
-                          ) : (
-                            <CommandGroup>
-                              {filtered.map((service) => {
-                                const isSelected = selectedServices.includes(service.id);
-                                return (
-                                  <CommandItem
-                                    key={service.id}
-                                    value={service.name}
-                                    onSelect={() => {
-                                      if (!isSelected) {
-                                        setSelectedServices([...selectedServices, service.id]);
-                                      }
-                                      setServiceSearchQuery("");
-                                      setServiceSearchOpen(false);
-                                    }}
-                                  >
-                                    <div className="flex flex-col w-full">
-                                      <span className="font-medium">{service.name}</span>
-                                      {service.defaultPrice > 0 && (
-                                        <span className="text-xs text-muted-foreground">
-                                          {service.defaultPrice} смн
-                                        </span>
-                                      )}
-                                    </div>
-                                  </CommandItem>
-                                );
-                              })}
-                            </CommandGroup>
-                          );
-                        })()}
-                      </CommandList>
-                    </Command>
-                  </div>
-                )}
-              </div>
-              <Tooltip delayDuration={100}>
-                <TooltipTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => {
-                      setNewServiceName(serviceSearchQuery || "");
-                      setIsCreatingServiceDialogOpen(true);
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Добавить услугу</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
-            {selectedServices.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {selectedServices.map((serviceId) => {
-                  const service = services.find((s) => s.id === serviceId);
-                  return (
-                    <div
-                      key={serviceId}
-                      className="flex items-center gap-2 px-3 py-1 bg-secondary rounded-full text-sm"
-                    >
-                      <span>{service?.name || serviceId}</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSelectedServices(
-                            selectedServices.filter((id) => id !== serviceId)
-                          )
-                        }
-                        className="text-destructive hover:text-destructive/80"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="price">Цена/Стоимость</Label>
-            <Input
-              id="price"
-              type="number"
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="Введите стоимость"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="visitNotes">Заметки о визите</Label>
-            <Textarea
-              id="visitNotes"
-              value={visitNotes}
-              onChange={(e) => setVisitNotes(e.target.value)}
-              rows={3}
-            />
+          <div className="rounded-lg border bg-muted/50 p-4">
+            <p className="text-sm text-muted-foreground">
+              💡 <strong>Услуги и стоимость</strong> будут добавлены позже, когда пациент придет на прием. 
+              Вы сможете создать запись в расписании и указать все необходимые услуги.
+            </p>
           </div>
 
           <div className="flex justify-end gap-2">
