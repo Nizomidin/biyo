@@ -225,6 +225,18 @@ const Patients = () => {
               open={isAddDialogOpen}
               onOpenChange={setIsAddDialogOpen}
               services={services}
+              onSaved={async () => {
+                // Refresh patients list after save
+                const clinicId = store.getCurrentClinicId();
+                if (clinicId) {
+                  try {
+                    const updatedPatients = await store.fetchPatients(clinicId);
+                    setPatients(updatedPatients);
+                  } catch (error) {
+                    console.error('Failed to refresh patients:', error);
+                  }
+                }
+              }}
             />
           </div>
 
@@ -370,10 +382,12 @@ function AddPatientDialog({
   open,
   onOpenChange,
   services: initialServices,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   services: ReturnType<typeof store.getServices>;
+  onSaved?: () => void;
 }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -441,26 +455,36 @@ function AddPatientDialog({
       updatedAt: new Date().toISOString(),
     };
 
-    await store.savePatient(patient);
-    toast.success("Пациент добавлен");
+    try {
+      await store.savePatient(patient);
+      toast.success("Пациент добавлен");
 
-    // Reset form
-    setName("");
-    setPhone("");
-    setEmail("");
-    setDateOfBirth("");
-    setIsChild(false);
-    setAddress("");
-    setNotes("");
-    setTeeth([]);
-    setSelectedServices([]);
-    setPrice("");
-    setVisitNotes("");
-    setServiceSearchOpen(false);
-    setIsCreatingService(false);
-    setNewServiceName("");
-    setServiceSearchQuery("");
-    onOpenChange(false);
+      // Trigger parent refresh
+      if (onSaved) {
+        onSaved();
+      }
+
+      // Reset form
+      setName("");
+      setPhone("");
+      setEmail("");
+      setDateOfBirth("");
+      setIsChild(false);
+      setAddress("");
+      setNotes("");
+      setTeeth([]);
+      setSelectedServices([]);
+      setPrice("");
+      setVisitNotes("");
+      setServiceSearchOpen(false);
+      setIsCreatingService(false);
+      setNewServiceName("");
+      setServiceSearchQuery("");
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Failed to save patient:', error);
+      toast.error("Не удалось сохранить пациента. Проверьте подключение к серверу.");
+    }
   };
 
   return (

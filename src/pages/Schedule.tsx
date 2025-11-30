@@ -282,12 +282,18 @@ const Schedule = () => {
 
     const fetchData = async () => {
       try {
-        const [fetchedDoctors] = await Promise.all([
+        const [fetchedDoctors, fetchedPatients, fetchedServices, fetchedVisits] = await Promise.all([
           store.fetchDoctors(clinicId),
+          store.fetchPatients(clinicId),
+          store.fetchServices(clinicId),
+          store.fetchVisits(clinicId),
         ]);
         setAllDoctors(fetchedDoctors);
+        setPatients(fetchedPatients);
+        setServices(fetchedServices);
+        setVisits(fetchedVisits);
       } catch (error) {
-        console.error('Failed to fetch doctors:', error);
+        console.error('Failed to fetch data:', error);
       }
     };
 
@@ -299,9 +305,20 @@ const Schedule = () => {
     
     // Listen to custom events for same-tab updates
     const handleDataUpdate = (event: CustomEvent) => {
-      if (event.detail?.type === 'doctors' || !event.detail?.type) {
+      const updateType = event.detail?.type;
+      if (!updateType || updateType === 'doctors') {
         setAllDoctors(store.getDoctors());
         setDoctorsRefreshKey(prev => prev + 1);
+      }
+      if (!updateType || updateType === 'patients') {
+        setPatients(store.getPatients());
+      }
+      if (!updateType || updateType === 'services') {
+        setServices(store.getServices());
+      }
+      if (!updateType || updateType === 'visits') {
+        setVisits(store.getVisits());
+        setVisitsRefreshKey(prev => prev + 1);
       }
     };
     
@@ -1161,6 +1178,18 @@ const Schedule = () => {
           selectedDate={selectedDate}
           onPatientSelect={(patientId) => setSelectedPatientForCard(patientId)}
           checkConflict={checkConflict}
+          onPatientCreated={async () => {
+            // Refresh patients list after creation
+            const clinicId = store.getCurrentClinicId();
+            if (clinicId) {
+              try {
+                const updatedPatients = await store.fetchPatients(clinicId);
+                setPatients(updatedPatients);
+              } catch (error) {
+                console.error('Failed to refresh patients:', error);
+              }
+            }
+          }}
         />
       )}
 
@@ -1438,6 +1467,7 @@ function AppointmentDialog({
   selectedDate,
   onPatientSelect,
   checkConflict,
+  onPatientCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1454,6 +1484,7 @@ function AppointmentDialog({
     endTime: string,
     excludeVisitId?: string
   ) => boolean;
+  onPatientCreated?: () => void;
 }) {
   const [patients, setPatients] = useState(initialPatients);
   const [services, setServices] = useState(initialServices);
@@ -1869,21 +1900,40 @@ function AppointmentDialog({
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await store.savePatient(newPatient);
-    toast.success("Пациент создан");
-    
-    // Refresh patients list to include the new patient
-    const updatedPatients = store.getPatients();
-    setPatients(updatedPatients);
-    
-    // Automatically select the newly created patient
-    setPatientId(newPatient.id);
-    
-    // Close dialogs and reset form
-    setIsCreatingPatientDialogOpen(false);
-    setPatientSearchOpen(false);
-    setNewPatientName("");
-    setNewPatientPhone("");
+    try {
+      await store.savePatient(newPatient);
+      toast.success("Пациент создан");
+      
+      // Refresh patients list from API to include the new patient
+      const clinicId = store.getCurrentClinicId();
+      if (clinicId) {
+        try {
+          const updatedPatients = await store.fetchPatients(clinicId);
+          setPatients(updatedPatients);
+        } catch (error) {
+          console.error('Failed to refresh patients:', error);
+          // Fallback to cache if API fails
+          setPatients(store.getPatients());
+        }
+      }
+      
+      // Trigger parent refresh
+      if (onPatientCreated) {
+        await onPatientCreated();
+      }
+      
+      // Automatically select the newly created patient
+      setPatientId(newPatient.id);
+      
+      // Close dialogs and reset form
+      setIsCreatingPatientDialogOpen(false);
+      setPatientSearchOpen(false);
+      setNewPatientName("");
+      setNewPatientPhone("");
+    } catch (error) {
+      console.error('Failed to create patient:', error);
+      toast.error("Не удалось создать пациента. Проверьте подключение к серверу.");
+    }
   };
 
   const handleCreateService = async () => {

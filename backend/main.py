@@ -260,13 +260,13 @@ def list_patients(clinicId: Optional[str] = Query(None), db: Session = Depends(g
 def upsert_patient(payload: schemas.PatientPayload, db: Session = Depends(get_db)):
     clinic = _clinic_or_404(db, payload.clinicId)
 
-    if payload.id:
-        patient = db.get(models.Patient, payload.id)
-        if not patient:
-            raise HTTPException(status_code=404, detail="Patient not found")
-    else:
+    # Upsert: update if exists, create if not
+    patient_id = payload.id or schemas.create_id("patient")
+    patient = db.get(models.Patient, patient_id)
+    
+    if not patient:
         patient = models.Patient(
-            id=payload.id or schemas.create_id("patient"),
+            id=patient_id,
             clinic=clinic,
             created_at=payload.createdAt or datetime.utcnow(),
         )
