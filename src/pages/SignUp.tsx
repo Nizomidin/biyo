@@ -55,8 +55,8 @@ const SignUp = () => {
       
       setIsCheckingEmail(true);
       try {
-        await store.fetchAllUsersFromAPI();
-        const existingUser = store.getUserByEmail(email);
+        // Try to fetch user from API if not in cache
+        const existingUser = store.getUserByEmail(email) || await store.fetchUserByEmail(email);
         if (existingUser) {
           toast.info("Аккаунт с таким email уже существует. Переход на страницу входа...");
           setTimeout(() => {
@@ -79,8 +79,8 @@ const SignUp = () => {
     // Scroll to top when component mounts
     window.scrollTo(0, 0);
     
-    store.fetchClinicsFromAPI().catch((error) => console.error('Failed to prefetch clinics:', error));
-    store.fetchAllUsersFromAPI().catch((error) => console.error('Failed to prefetch users:', error));
+    // Prefetch clinics (optional, will be fetched when needed)
+    store.fetchClinics().catch((error) => console.error('Failed to prefetch clinics:', error));
     
     // Force light mode for sign-up page
     document.documentElement.classList.remove('dark');
@@ -154,8 +154,7 @@ const SignUp = () => {
     }
     
     // Check if user already exists
-    await store.fetchAllUsersFromAPI();
-    const existingUser = store.getUserByEmail(email);
+    const existingUser = store.getUserByEmail(email) || await store.fetchUserByEmail(email);
     if (existingUser) {
       toast.info("Аккаунт с таким email уже существует. Переход на страницу входа...");
       setTimeout(() => {
@@ -179,7 +178,7 @@ const SignUp = () => {
       return;
     }
     
-    await store.fetchClinicsFromAPI();
+    await store.fetchClinics();
     const existingClinics = store.getClinics();
     const existingClinic = existingClinics.find((c) => c.name === clinicName);
 

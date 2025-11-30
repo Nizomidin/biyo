@@ -42,11 +42,38 @@ const MigrateData = () => {
     setIsMigrating(true);
     setResult(null);
     try {
-      const summary = await store.migrateLocalDataToAPI();
+      // Migration is no longer needed - all data is already API-only
+      // This page can be used to verify data is in sync
+      const clinicId = store.getCurrentClinicId();
+      if (!clinicId) {
+        throw new Error("Необходимо войти в систему");
+      }
+
+      // Fetch all data to verify sync
+      await Promise.all([
+        store.fetchClinics(),
+        store.fetchUsers(clinicId),
+        store.fetchPatients(clinicId),
+        store.fetchDoctors(clinicId),
+        store.fetchServices(clinicId),
+        store.fetchVisits(clinicId),
+      ]);
+
+      const summary: MigrationResult = {
+        clinicsMigrated: store.getClinics().length,
+        usersMigrated: store.getUsers(clinicId).length,
+        patientsMigrated: store.getPatients(clinicId).length,
+        doctorsMigrated: store.getDoctors(clinicId).length,
+        servicesMigrated: store.getServices(clinicId).length,
+        visitsMigrated: store.getVisits(clinicId).length,
+        filesMigrated: store.getFiles(undefined, clinicId).length,
+        errors: [],
+      };
+      
       setResult(summary);
       toast.success("Данные синхронизированы с сервером");
     } catch (error) {
-      toast.error((error as Error).message || "Ошибка при миграции данных");
+      toast.error((error as Error).message || "Ошибка при проверке данных");
     } finally {
       setIsMigrating(false);
     }

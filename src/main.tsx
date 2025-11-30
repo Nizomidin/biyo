@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import App from "./App.tsx";
 import "./index.css";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Apply base body styles before React mounts
 const savedTheme = localStorage.getItem("biyo-theme");
@@ -25,7 +26,11 @@ try {
   rootElement.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 100vh; color: white; font-family: sans-serif;"><p>Loading application...</p></div>';
   
   const root = createRoot(rootElement);
-  root.render(<App />);
+  root.render(
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  );
 } catch (error) {
   console.error("Failed to initialize app:", error);
   const rootElement = document.getElementById("root");
