@@ -498,14 +498,23 @@ const Schedule = () => {
     setIsAppointmentOpen(true);
   };
 
-  const handleDeleteAppointment = () => {
+  const handleDeleteAppointment = async () => {
     if (deleteAppointmentId) {
-      store.deleteVisit(deleteAppointmentId);
-      // Refresh visits to show the deletion immediately
-      setVisits(store.getVisits());
-      setVisitsRefreshKey(prev => prev + 1);
-      toast.success("Запись удалена");
-      setDeleteAppointmentId(null);
+      try {
+        await store.deleteVisit(deleteAppointmentId);
+        // Refresh visits to show the deletion immediately
+        const clinicId = store.getCurrentClinicId();
+        if (clinicId) {
+          await store.fetchVisits(clinicId);
+        }
+        setVisits(store.getVisits());
+        setVisitsRefreshKey(prev => prev + 1);
+        toast.success("Запись удалена");
+        setDeleteAppointmentId(null);
+      } catch (error) {
+        console.error('Failed to delete visit:', error);
+        toast.error("Не удалось удалить запись");
+      }
     }
   };
 
@@ -1190,11 +1199,22 @@ const Schedule = () => {
           <AlertDialogFooter>
             <AlertDialogCancel>Отмена</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
+              onClick={async () => {
                 if (deletingDoctorId) {
-                  store.deleteDoctor(deletingDoctorId);
-                  toast.success("Врач удален");
-                  setDeletingDoctorId(null);
+                  try {
+                    await store.deleteDoctor(deletingDoctorId);
+                    toast.success("Врач удален");
+                    setDeletingDoctorId(null);
+                    // Refresh doctors
+                    const clinicId = store.getCurrentClinicId();
+                    if (clinicId) {
+                      await store.fetchDoctors(clinicId);
+                    }
+                    setDoctors(store.getDoctors());
+                  } catch (error) {
+                    console.error('Failed to delete doctor:', error);
+                    toast.error("Не удалось удалить врача");
+                  }
                 }
               }}
               className="bg-destructive text-destructive-foreground"
@@ -2461,10 +2481,19 @@ function ServicesDialog({
     }
   };
 
-  const handleDeleteService = (serviceId: string) => {
-    store.deleteService(serviceId);
-    setServices(store.getServices());
-    toast.success("Услуга удалена");
+  const handleDeleteService = async (serviceId: string) => {
+    try {
+      await store.deleteService(serviceId);
+      const clinicId = store.getCurrentClinicId();
+      if (clinicId) {
+        await store.fetchServices(clinicId);
+      }
+      setServices(store.getServices());
+      toast.success("Услуга удалена");
+    } catch (error) {
+      console.error('Failed to delete service:', error);
+      toast.error("Не удалось удалить услугу");
+    }
   };
 
   return (

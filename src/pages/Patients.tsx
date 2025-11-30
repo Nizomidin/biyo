@@ -92,39 +92,53 @@ const Patients = () => {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
 
-  const [patients, setPatients] = useState(store.getPatients());
-  const [services, setServices] = useState(store.getServices());
-  const [visits, setVisits] = useState(store.getVisits());
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [visits, setVisits] = useState<Visit[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Refresh all data periodically to sync with other users in the same clinic
+  // Fetch initial data and refresh periodically to sync with other users
   useEffect(() => {
-    const refreshData = () => {
+    const clinicId = store.getCurrentClinicId();
+    if (!clinicId) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchData = async () => {
+      try {
+        const [fetchedPatients, fetchedServices, fetchedVisits] = await Promise.all([
+          store.fetchPatients(clinicId),
+          store.fetchServices(clinicId),
+          store.fetchVisits(clinicId),
+        ]);
+        setPatients(fetchedPatients);
+        setServices(fetchedServices);
+        setVisits(fetchedVisits);
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+        setIsLoading(false);
+      }
+    };
+
+    // Initial fetch
+    fetchData();
+    
+    // Refresh every 5 seconds to catch changes from other users
+    const interval = setInterval(fetchData, 5000);
+    
+    // Listen to custom events for same-tab updates
+    const handleDataUpdate = () => {
       setPatients(store.getPatients());
       setServices(store.getServices());
       setVisits(store.getVisits());
     };
     
-    // Refresh every 2 seconds to catch changes from other users
-    const interval = setInterval(refreshData, 2000);
-    
-    // Also listen to storage events (for cross-tab sync)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key && e.key.startsWith('biyo_')) {
-        refreshData();
-      }
-    };
-    
-    // Listen to custom events for same-tab updates
-    const handleDataUpdate = () => {
-      refreshData();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
     window.addEventListener('biyo-data-updated', handleDataUpdate);
     
     return () => {
       clearInterval(interval);
-      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('biyo-data-updated', handleDataUpdate);
     };
   }, []);
@@ -177,14 +191,27 @@ const Patients = () => {
     setSelectedPatient(patient);
   };
 
-  const handleDeletePatient = () => {
+  const handleDeletePatient = async () => {
     if (patientToDelete) {
-      store.deletePatient(patientToDelete.id);
-      toast.success("Пациент удален");
-      setPatientToDelete(null);
-      setIsDeleteDialogOpen(false);
-      if (selectedPatient?.id === patientToDelete.id) {
-        setSelectedPatient(null);
+      try {
+        await store.deletePatient(patientToDelete.id);
+        toast.success("Пациент удален");
+        setPatientToDelete(null);
+        setIsDeleteDialogOpen(false);
+        if (selectedPatient?.id === patientToDelete.id) {
+          setSelectedPatient(null);
+        }
+        // Refresh data
+        const clinicId = store.getCurrentClinicId();
+        if (clinicId) {
+          const [fetchedPatients] = await Promise.all([
+            store.fetchPatients(clinicId),
+          ]);
+          setPatients(fetchedPatients);
+        }
+      } catch (error) {
+        console.error('Failed to delete patient:', error);
+        toast.error("Не удалось удалить пациента");
       }
     }
   };
@@ -1251,44 +1278,34 @@ export function PatientCard({
     }
 
     try {
-      // Update file name by deleting old and saving with same ID
       const clinicId = store.getCurrentClinicId();
       if (!clinicId) {
         toast.error("Не удалось определить клинику");
         return;
       }
 
-      // Get all files from storage
-      const allFiles = store.getFiles();
-      const fileIndex = allFiles.findIndex((f) => f.id === fileId);
-      
-      if (fileIndex >= 0) {
-        // Update the file name
-        const updatedFile: PatientFile = {
-          ...allFiles[fileIndex],
-          name: editingFileName.trim(),
-        };
-        
-        // Replace in storage
-        const updatedFiles = [...allFiles];
-        updatedFiles[fileIndex] = updatedFile;
-        
-        // Save to storage
-        const STORAGE_KEYS = {
-          FILES: "biyo_files",
-        };
-        localStorage.setItem(STORAGE_KEYS.FILES, JSON.stringify(updatedFiles));
-        window.dispatchEvent(new CustomEvent('biyo-data-updated', { detail: { type: 'files' } }));
-        
-        const patientFiles = updatedFiles.filter((f) => f.patientId === patient.id);
-        setFiles(patientFiles);
-        
-        setEditingFileNameId(null);
-        setEditingFileName("");
-        toast.success("Название файла обновлено");
-      } else {
-        toast.error("Файл не найден в хранилище");
+      const file = files.find((f) => f.id === fileId);
+      if (!file) {
+        toast.error("Файл не найден");
+        return;
       }
+
+      // Update the file name
+      const updatedFile: PatientFile = {
+        ...file,
+        name: editingFileName.trim(),
+      };
+      
+      // Save updated file through API
+      await store.saveFile(updatedFile);
+      
+      // Refresh files from store
+      const patientFiles = store.getFiles(patient.id, clinicId);
+      setFiles(patientFiles);
+      
+      setEditingFileNameId(null);
+      setEditingFileName("");
+      toast.success("Название файла обновлено");
     } catch (error) {
       console.error("Failed to rename file", error);
       toast.error("Не удалось переименовать файл");
@@ -1297,10 +1314,13 @@ export function PatientCard({
 
   const handleDeleteFile = async (fileId: string) => {
     try {
-      store.deleteFile(fileId);
-      const updatedFiles = store.getFiles().filter((f) => f.patientId === patient.id);
-      setFiles(updatedFiles);
-      toast.success("Файл удален");
+      const clinicId = store.getCurrentClinicId();
+      if (clinicId) {
+        await store.deleteFile(fileId, clinicId);
+        const updatedFiles = store.getFiles(patient.id, clinicId);
+        setFiles(updatedFiles);
+        toast.success("Файл удален");
+      }
     } catch (error) {
       console.error("Failed to delete file", error);
       toast.error("Не удалось удалить файл");

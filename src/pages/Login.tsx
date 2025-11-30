@@ -27,7 +27,7 @@ const Login = () => {
     let user = store.getUserByEmail(email);
 
     if (!user) {
-      user = await store.fetchUserByEmailFromAPI(email) || undefined;
+      user = await store.fetchUserByEmail(email) || undefined;
     }
     
     if (!user) {
@@ -40,7 +40,7 @@ const Login = () => {
     // Ensure clinic info is cached before continuing
     const clinic = store.getClinicById(user.clinicId);
     if (!clinic) {
-      await store.fetchClinicByIdFromAPI(user.clinicId);
+      await store.fetchClinicById(user.clinicId);
     }
 
     store.setCurrentUser(user);

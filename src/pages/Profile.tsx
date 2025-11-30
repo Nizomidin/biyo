@@ -114,8 +114,13 @@ const Profile = () => {
 
   useEffect(() => {
     if (isSuperAdmin) {
-      store.fetchClinicsFromAPI().catch((error) => console.error('Failed to fetch clinics for super admin:', error));
-      store.fetchAllUsersFromAPI().catch((error) => console.error('Failed to fetch users for super admin:', error));
+      store.fetchClinics().catch((error) => console.error('Failed to fetch clinics for super admin:', error));
+      // Fetch users for all clinics (will need clinicId, but super admin might not have one)
+      // For now, skip if no clinicId
+      const clinicId = store.getCurrentClinicId();
+      if (clinicId) {
+        store.fetchUsers(clinicId).catch((error) => console.error('Failed to fetch users for super admin:', error));
+      }
     }
   }, [isSuperAdmin]);
 
