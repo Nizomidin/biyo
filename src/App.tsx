@@ -30,9 +30,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         setIsAuthenticated(hasUser);
         setIsReady(true);
 
-        if (hasUser) {
-          await store.updatePatientBalances().catch((err) => console.error("Balance update failed:", err));
-        }
+        // Balance calculation is done on-demand, no need to update on mount
       } catch (error) {
         console.error("Error checking auth:", error);
         setIsAuthenticated(false);
@@ -60,23 +58,8 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      return;
-    }
-
-    const runSync = () => {
-      store.syncFromAPI().catch((err) => console.error("Sync failed:", err));
-    };
-
-    const interval = setInterval(runSync, 10000);
-    // Perform an eager sync when authentication state flips to true
-    runSync();
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [isAuthenticated]);
+  // Note: API sync is now handled by individual components when they fetch data
+  // No need for periodic sync since all operations go through API directly
 
   // Show loading state briefly while checking
   if (!isReady) {
