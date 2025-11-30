@@ -79,6 +79,8 @@ class ApiClient {
           "Content-Type": "application/json",
           ...options.headers,
         },
+        // Add timeout to prevent hanging
+        signal: AbortSignal.timeout(10000), // 10 second timeout
       });
 
       let payload: unknown = null;
@@ -102,6 +104,13 @@ class ApiClient {
     } catch (error) {
       if (error instanceof ApiError) {
         throw error;
+      }
+      // Handle network errors gracefully
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new ApiError(0, "Request timeout - сервер не отвечает", error);
+      }
+      if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+        throw new ApiError(0, "Не удалось подключиться к серверу. Проверьте подключение к интернету.", error);
       }
       const message =
         error instanceof Error ? error.message : "Unexpected error while calling API";

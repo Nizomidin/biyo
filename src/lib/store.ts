@@ -597,21 +597,31 @@ class Store {
 
   // Helper methods for API fetching
   async fetchUserByEmail(email: string): Promise<User | null> {
-    const user = await apiClient.getUserByEmail(email);
-    if (user) {
-      this.cache.users.set(user.id, user);
-      this.notifyDataUpdate("users");
+    try {
+      const user = await apiClient.getUserByEmail(email);
+      if (user) {
+        this.cache.users.set(user.id, user);
+        this.notifyDataUpdate("users");
+      }
+      return user;
+    } catch (error) {
+      console.error("Failed to fetch user by email:", error);
+      return null; // Fail gracefully
     }
-    return user;
   }
 
   async fetchClinicById(id: string): Promise<Clinic | null> {
-    const clinic = await apiClient.getClinicById(id);
-    if (clinic) {
-      this.cache.clinics.set(clinic.id, clinic);
-      this.notifyDataUpdate("clinics");
+    try {
+      const clinic = await apiClient.getClinicById(id);
+      if (clinic) {
+        this.cache.clinics.set(clinic.id, clinic);
+        this.notifyDataUpdate("clinics");
+      }
+      return clinic;
+    } catch (error) {
+      console.error("Failed to fetch clinic by id:", error);
+      return null; // Fail gracefully
     }
-    return clinic;
   }
 
   // Get user by email (from cache only)

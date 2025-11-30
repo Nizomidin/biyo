@@ -27,7 +27,14 @@ const Login = () => {
     let user = store.getUserByEmail(email);
 
     if (!user) {
-      user = await store.fetchUserByEmail(email) || undefined;
+      try {
+        user = await store.fetchUserByEmail(email) || undefined;
+      } catch (error) {
+        console.error("Failed to fetch user:", error);
+        toast.error("Не удалось подключиться к серверу. Проверьте подключение к интернету.");
+        setIsLoading(false);
+        return;
+      }
     }
     
     if (!user) {
@@ -40,7 +47,12 @@ const Login = () => {
     // Ensure clinic info is cached before continuing
     const clinic = store.getClinicById(user.clinicId);
     if (!clinic) {
-      await store.fetchClinicById(user.clinicId);
+      try {
+        await store.fetchClinicById(user.clinicId);
+      } catch (error) {
+        console.error("Failed to fetch clinic:", error);
+        // Continue anyway, clinic info will be fetched later if needed
+      }
     }
 
     store.setCurrentUser(user);
