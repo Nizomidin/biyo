@@ -14,7 +14,7 @@ const getApiClient = async (): Promise<ApiClientInstance> => {
 // Enable API sync (set to true to enable backend sync)
 // Default to true for full cross-device sync (works in both dev and prod)
 // Set VITE_ENABLE_API_SYNC=false to disable
-const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC === 'true';
+const ENABLE_API_SYNC = import.meta.env.VITE_ENABLE_API_SYNC !== 'false';
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 const MAX_API_SYNC_FAILURES = 3;
 let apiSyncEnabled = ENABLE_API_SYNC;
@@ -33,17 +33,25 @@ const runApiSync = async (
     apiSyncFailureCount = 0;
   } catch (error) {
     apiSyncFailureCount += 1;
+    // Always log errors in dev mode, and log critical failures in prod
+    const errorMessage = error instanceof Error ? error.message : String(error);
     if (apiSyncFailureCount >= MAX_API_SYNC_FAILURES) {
       apiSyncEnabled = false;
-      if (!apiSyncDisabledNotified && import.meta.env.DEV) {
-        console.warn(
-          `[API sync] Disabled after repeated failures. Latest error (${context}):`,
-          error
+      console.error(
+        `[API sync] DISABLED after ${MAX_API_SYNC_FAILURES} failures. Latest error (${context}):`,
+        errorMessage
+      );
+      if (!apiSyncDisabledNotified) {
+        console.error(
+          `[API sync] To re-enable, refresh the page. Make sure backend is running at ${API_BASE_URL}`
         );
         apiSyncDisabledNotified = true;
       }
-    } else if (import.meta.env.DEV && !apiSyncDisabledNotified) {
-      console.warn(`[API sync] Failed (${context}). Retrying silently...`, error);
+    } else {
+      console.warn(
+        `[API sync] Failed (${context}, attempt ${apiSyncFailureCount}/${MAX_API_SYNC_FAILURES}):`,
+        errorMessage
+      );
     }
   }
 };

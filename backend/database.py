@@ -12,7 +12,17 @@ def _build_database_url() -> str:
     url = os.getenv("SERKOR_DB_URL")
     if url:
         return url
-    path = os.getenv("SERKOR_DB_PATH", "backend/data.db")
+    path = os.getenv("SERKOR_DB_PATH")
+    if not path:
+        # Default: use data.db in the backend directory
+        # This file is in backend/, so we use the same directory
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        path = os.path.join(backend_dir, "data.db")
+    elif not os.path.isabs(path):
+        # Convert relative path to absolute
+        path = os.path.abspath(path)
+    # Ensure parent directory exists
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     return f"sqlite:///{path}"
 
 
