@@ -1,0 +1,34 @@
+name: Test CI/CD
+
+# Simple workflow to verify CI/CD is working
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    name: Verify CI/CD is working
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check workflows exist
+        run: |
+          echo "✅ GitHub Actions workflows are configured!"
+          echo "📁 Available workflows:"
+          ls -la .github/workflows/ || echo "No workflows found"
+
+      - name: Summary
+        run: |
+          echo "## ✅ CI/CD Status" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "GitHub Actions is working correctly!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Available Workflows:" >> $GITHUB_STEP_SUMMARY
+          echo "- Frontend CI/CD" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend CI/CD" >> $GITHUB_STEP_SUMMARY
+          echo "- Test CI/CD (this one)" >> $GITHUB_STEP_SUMMARY
+

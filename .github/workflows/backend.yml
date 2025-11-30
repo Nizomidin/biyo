@@ -3,13 +3,9 @@ name: Backend CI/CD
 on:
   push:
     branches: [main]
-    paths:
-      - 'backend/**'
-      - '.github/workflows/backend.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'backend/**'
+  workflow_dispatch:  # Allow manual triggering
 
 jobs:
   test:
