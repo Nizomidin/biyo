@@ -164,13 +164,13 @@ def list_doctors(clinicId: Optional[str] = Query(None), db: Session = Depends(ge
 def upsert_doctor(payload: schemas.DoctorPayload, db: Session = Depends(get_db)):
     clinic = _clinic_or_404(db, payload.clinicId)
 
-    if payload.id:
-        doctor = db.get(models.Doctor, payload.id)
-        if not doctor:
-            raise HTTPException(status_code=404, detail="Doctor not found")
-    else:
+    # Upsert: update if exists, create if not
+    doctor_id = payload.id or schemas.create_id("doctor")
+    doctor = db.get(models.Doctor, doctor_id)
+    
+    if not doctor:
         doctor = models.Doctor(
-            id=payload.id or schemas.create_id("doctor"),
+            id=doctor_id,
             clinic=clinic,
         )
         db.add(doctor)
