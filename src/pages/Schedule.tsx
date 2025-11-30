@@ -172,10 +172,10 @@ const Schedule = () => {
   const [doctorRefreshKey, setDoctorRefreshKey] = useState(0);
   const [doctorsRefreshKey, setDoctorsRefreshKey] = useState(0);
   const [visitsRefreshKey, setVisitsRefreshKey] = useState(0);
-  const [patients, setPatients] = useState(store.getPatients());
-  const [services, setServices] = useState(store.getServices());
-  const [visits, setVisits] = useState(store.getVisits());
-  const allDoctors = store.getDoctors();
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [visits, setVisits] = useState<Visit[]>([]);
+  const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [searchTerm, setSearchTerm] = useState("");
   const [activeStatusFilters, setActiveStatusFilters] = useState<Set<Visit["status"]>>(
@@ -262,52 +262,54 @@ const Schedule = () => {
   
   // Filter doctors: if user is not admin, only show their personal doctor
   const doctors = useMemo(() => {
-    const allDocs = store.getDoctors(); // Get fresh doctors list
     if (!currentUser) return [];
     if (currentUser.role === "admin") {
-      return allDocs;
+      return allDoctors;
     }
     // For non-admin users, only show doctor linked to their user account
     // Also try matching by email as fallback
-    const filtered = allDocs.filter((doctor) => 
+    const filtered = allDoctors.filter((doctor) => 
       doctor.userId === currentUser.id || 
       (doctor.email === currentUser.email && doctor.clinicId === currentUser.clinicId)
     );
     return filtered;
-  }, [currentUser, doctorRefreshKey, doctorsRefreshKey]); // Depend on refresh keys to trigger update
+  }, [currentUser, allDoctors, doctorRefreshKey, doctorsRefreshKey]);
   
-  // Refresh all data periodically to sync with other users in the same clinic
+  // Fetch initial data and refresh periodically
   useEffect(() => {
-    const refreshData = () => {
-      setPatients(store.getPatients());
-      setServices(store.getServices());
-      setVisits(store.getVisits());
-      setDoctorsRefreshKey(prev => prev + 1);
-      setVisitsRefreshKey(prev => prev + 1); // Trigger appointments refresh
+    const clinicId = store.getCurrentClinicId();
+    if (!clinicId) return;
+
+    const fetchData = async () => {
+      try {
+        const [fetchedDoctors] = await Promise.all([
+          store.fetchDoctors(clinicId),
+        ]);
+        setAllDoctors(fetchedDoctors);
+      } catch (error) {
+        console.error('Failed to fetch doctors:', error);
+      }
     };
+
+    // Initial fetch
+    fetchData();
     
-    // Refresh every 2 seconds to catch changes from other users
-    const interval = setInterval(refreshData, 2000);
+    // Refresh every 5 seconds to catch changes from other users
+    const interval = setInterval(fetchData, 5000);
     
-    // Also listen to storage events (for cross-tab sync)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key && e.key.startsWith('biyo_')) {
-        refreshData();
+    // Listen to custom events for same-tab updates
+    const handleDataUpdate = (event: CustomEvent) => {
+      if (event.detail?.type === 'doctors' || !event.detail?.type) {
+        setAllDoctors(store.getDoctors());
+        setDoctorsRefreshKey(prev => prev + 1);
       }
     };
     
-    // Listen to custom events for same-tab updates
-    const handleDataUpdate = () => {
-      refreshData();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    window.addEventListener('biyo-data-updated', handleDataUpdate);
+    window.addEventListener('biyo-data-updated', handleDataUpdate as EventListener);
     
     return () => {
       clearInterval(interval);
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('biyo-data-updated', handleDataUpdate);
+      window.removeEventListener('biyo-data-updated', handleDataUpdate as EventListener);
     };
   }, []);
 
@@ -679,6 +681,18 @@ const Schedule = () => {
                 }}
                 doctor={editingDoctor}
                 onDelete={(doctorId) => setDeletingDoctorId(doctorId)}
+                onSaved={async () => {
+                  // Refresh doctors list after save
+                  const clinicId = store.getCurrentClinicId();
+                  if (clinicId) {
+                    try {
+                      const updatedDoctors = await store.fetchDoctors(clinicId);
+                      setAllDoctors(updatedDoctors);
+                    } catch (error) {
+                      console.error('Failed to refresh doctors:', error);
+                    }
+                  }
+                }}
               />
               {currentUser?.role === "admin" && (
                 <Tooltip delayDuration={100}>
@@ -1234,11 +1248,13 @@ function AddDoctorDialog({
   onOpenChange,
   doctor,
   onDelete,
+  onSaved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   doctor?: Doctor | null;
   onDelete?: (doctorId: string) => void;
+  onSaved?: () => void;
 }) {
   const [name, setName] = useState(doctor?.name || "");
   const [specialization, setSpecialization] = useState(doctor?.specialization || "");
@@ -1294,18 +1310,28 @@ function AddDoctorDialog({
       clinicId,
     };
 
-    await store.saveDoctor(doctorData);
-    toast.success(doctor ? "Врач обновлен" : "Врач добавлен");
+    try {
+      await store.saveDoctor(doctorData);
+      toast.success(doctor ? "Врач обновлен" : "Врач добавлен");
 
-    // Reset form
-    if (!doctor) {
-      setName("");
-      setSpecialization("");
-      setEmail("");
-      setPhone("");
-      setColor("blue");
+      // Reset form
+      if (!doctor) {
+        setName("");
+        setSpecialization("");
+        setEmail("");
+        setPhone("");
+        setColor("blue");
+      }
+      // Trigger parent refresh
+      if (onSaved) {
+        onSaved();
+      }
+      // Close dialog
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Failed to save doctor:', error);
+      toast.error("Не удалось сохранить врача. Проверьте подключение к серверу.");
     }
-    onOpenChange(false);
   };
 
   return (
