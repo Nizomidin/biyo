@@ -279,6 +279,7 @@ def upsert_patient(payload: schemas.PatientPayload, db: Session = Depends(get_db
     patient.is_child = payload.isChild
     patient.address = payload.address
     patient.notes = payload.notes
+    patient.status = payload.status or "active"
     patient.teeth = [tooth.model_dump() for tooth in payload.teeth]
     patient.services = payload.services
     patient.balance = payload.balance

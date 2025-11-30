@@ -16,6 +16,7 @@ export interface Patient {
   isChild: boolean;
   address?: string;
   notes?: string;
+  status?: "active" | "got_well" | "in_treatment" | "inactive" | "transferred";
   teeth: ToothStatus[];
   services: string[]; // Service IDs
   balance: number; // Outstanding balance

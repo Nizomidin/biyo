@@ -114,6 +114,7 @@ class PatientPayload(BaseModel):
     isChild: bool = False
     address: Optional[str] = None
     notes: Optional[str] = None
+    status: Optional[str] = "active"
     teeth: List[ToothStatus] = Field(default_factory=list)
     services: List[str] = Field(default_factory=list)
     balance: float = 0
@@ -131,6 +132,7 @@ class PatientResponse(ORMModel):
     is_child: bool
     address: Optional[str]
     notes: Optional[str]
+    status: str
     teeth: List[dict]
     services: List[str]
     balance: float
