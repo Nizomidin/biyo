@@ -481,10 +481,6 @@ class Store {
     return users;
   }
 
-  async getUserByEmail(email: string): Promise<User | null> {
-    return await apiClient.getUserByEmail(email);
-  }
-
   async saveUser(user: User): Promise<User> {
     const saved = await apiClient.saveUser(user);
     this.cache.users.set(saved.id, saved);
@@ -507,10 +503,6 @@ class Store {
     clinics.forEach((c) => this.cache.clinics.set(c.id, c));
     this.notifyDataUpdate("clinics");
     return clinics;
-  }
-
-  async getClinicById(id: string): Promise<Clinic | null> {
-    return await apiClient.getClinicById(id);
   }
 
   async saveClinic(clinic: Clinic): Promise<Clinic> {

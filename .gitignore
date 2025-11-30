@@ -52,6 +52,9 @@ venv/
 ENV/
 env/
 
+# Don't ignore src/lib/ (TypeScript source files)
+!src/lib/
+
 # Database files
 *.db
 *.sqlite
