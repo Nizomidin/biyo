@@ -39,7 +39,7 @@ class UserPayload(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: Optional[str] = None
-    email: EmailStr
+    email: str
     password: Optional[str] = None
     phone: Optional[str] = None
     clinicId: str
@@ -50,7 +50,7 @@ class UserPayload(BaseModel):
 
 class UserResponse(ORMModel):
     id: str
-    email: EmailStr
+    email: str
     phone: Optional[str]
     clinic_id: str
     proficiency: Optional[str]
@@ -127,7 +127,7 @@ class PatientResponse(ORMModel):
     id: str
     name: str
     phone: str
-    email: EmailStr
+    email: str
     date_of_birth: datetime
     is_child: bool
     address: Optional[str]
