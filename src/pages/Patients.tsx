@@ -1560,6 +1560,25 @@ export function PatientCard({
                 <p>{patient.notes || "Нет заметок"}</p>
               )}
             </div>
+            <div>
+              <Label className="text-muted-foreground">Баланс (смн)</Label>
+              {isEditing ? (
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={formatAmountForInput(patient.balance)}
+                  onChange={(e) => {
+                    const value = parseFloat(e.target.value) || 0;
+                    setPatient({ ...patient, balance: value });
+                  }}
+                  placeholder="0.00"
+                />
+              ) : (
+                <p className={`font-medium ${patient.balance > 0 ? "text-orange-500" : patient.balance < 0 ? "text-green-500" : ""}`}>
+                  {patient.balance.toFixed(2)} смн
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Tooth Chart */}
