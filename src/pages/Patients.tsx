@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { Search, Plus, Phone, Mail, Trash2, Upload, File, Eye, Edit2, X } from "lucide-react";
+import { Search, Plus, Phone, Mail, Trash2, Upload, File, Eye, Edit2, X, ArrowUpDown, ArrowUp, ArrowDown, Download, CheckSquare, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -40,6 +40,12 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -50,11 +56,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { ToothChart } from "@/components/ToothChart";
-import { store, Patient, ToothStatus, VisitService, Payment, Visit, PatientFile } from "@/lib/store";
+import { store, Patient, ToothStatus, VisitService, Payment, Visit, PatientFile, Service } from "@/lib/store";
 import { format, parseISO } from "date-fns";
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const formatAmountForInput = (value?: number) =>
   value === undefined || value === null
@@ -83,10 +91,20 @@ function normalizeTeeth(teeth: ToothStatus[] = []): ToothStatus[] {
 }
 
 type FilterType = "debt" | "untreated" | "children" | "adults";
+type SortField = "name" | "phone" | "balance" | "status" | "createdAt" | "lastVisit";
+type SortDirection = "asc" | "desc";
 
 const Patients = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<Set<FilterType>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortField, setSortField] = useState<SortField>("name");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [selectedPatients, setSelectedPatients] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  const itemsPerPage = 20;
+  
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -143,7 +161,7 @@ const Patients = () => {
     };
   }, []);
 
-  // Filter patients
+  // Filter and sort patients
   const filteredPatients = useMemo(() => {
     let filtered = patients;
 
@@ -156,6 +174,11 @@ const Patients = () => {
           p.phone.toLowerCase().includes(query) ||
           p.email.toLowerCase().includes(query)
       );
+    }
+
+    // Status filter
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((p) => (p.status || "active") === statusFilter);
     }
 
     // Apply all active filters (multiple filters can be active)
@@ -174,8 +197,70 @@ const Patients = () => {
       filtered = filtered.filter((p) => p.isChild === false);
     }
 
+    // Sort patients
+    filtered = [...filtered].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortField) {
+        case "name":
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case "phone":
+          aValue = a.phone.toLowerCase();
+          bValue = b.phone.toLowerCase();
+          break;
+        case "balance":
+          aValue = a.balance;
+          bValue = b.balance;
+          break;
+        case "status":
+          aValue = a.status || "active";
+          bValue = b.status || "active";
+          break;
+        case "createdAt":
+          aValue = new Date(a.createdAt).getTime();
+          bValue = new Date(b.createdAt).getTime();
+          break;
+        case "lastVisit":
+          const aVisits = visits.filter((v) => v.patientId === a.id);
+          const bVisits = visits.filter((v) => v.patientId === b.id);
+          aValue = aVisits.length > 0 ? new Date(aVisits[0].startTime).getTime() : 0;
+          bValue = bVisits.length > 0 ? new Date(bVisits[0].startTime).getTime() : 0;
+          break;
+        default:
+          return 0;
+      }
+
+      if (aValue < bValue) return sortDirection === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+
     return filtered;
-  }, [patients, searchQuery, activeFilters]);
+  }, [patients, searchQuery, activeFilters, statusFilter, sortField, sortDirection, visits]);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredPatients.length / itemsPerPage);
+  const paginatedPatients = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredPatients.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredPatients, currentPage, itemsPerPage]);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, activeFilters, statusFilter, sortField, sortDirection]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortDirection("asc");
+    }
+  };
 
   const handleFilterClick = (filter: FilterType) => {
     const newFilters = new Set(activeFilters);
@@ -185,6 +270,90 @@ const Patients = () => {
       newFilters.add(filter);
     }
     setActiveFilters(newFilters);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedPatients.size === paginatedPatients.length) {
+      setSelectedPatients(new Set());
+    } else {
+      setSelectedPatients(new Set(paginatedPatients.map((p) => p.id)));
+    }
+  };
+
+  const handleSelectPatient = (patientId: string) => {
+    const newSelected = new Set(selectedPatients);
+    if (newSelected.has(patientId)) {
+      newSelected.delete(patientId);
+    } else {
+      newSelected.add(patientId);
+    }
+    setSelectedPatients(newSelected);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedPatients.size === 0) return;
+    
+    try {
+      for (const patientId of selectedPatients) {
+        await store.deletePatient(patientId);
+      }
+      toast.success(`Удалено пациентов: ${selectedPatients.size}`);
+      setSelectedPatients(new Set());
+      const clinicId = store.getCurrentClinicId();
+      if (clinicId) {
+        const updatedPatients = await store.fetchPatients(clinicId);
+        setPatients(updatedPatients);
+      }
+    } catch (error) {
+      console.error('Failed to delete patients:', error);
+      toast.error("Не удалось удалить пациентов");
+    }
+  };
+
+  const handleBulkStatusUpdate = async (status: string) => {
+    if (selectedPatients.size === 0) return;
+    
+    try {
+      for (const patientId of selectedPatients) {
+        const patient = patients.find((p) => p.id === patientId);
+        if (patient) {
+          await store.savePatient({ ...patient, status: status as any });
+        }
+      }
+      toast.success(`Обновлено пациентов: ${selectedPatients.size}`);
+      setSelectedPatients(new Set());
+      const clinicId = store.getCurrentClinicId();
+      if (clinicId) {
+        const updatedPatients = await store.fetchPatients(clinicId);
+        setPatients(updatedPatients);
+      }
+    } catch (error) {
+      console.error('Failed to update patients:', error);
+      toast.error("Не удалось обновить статус пациентов");
+    }
+  };
+
+  const handleExport = () => {
+    const csv = [
+      ["Имя", "Телефон", "Email", "Статус", "Баланс", "Дата создания"].join(","),
+      ...filteredPatients.map((p) =>
+        [
+          `"${p.name}"`,
+          `"${p.phone}"`,
+          `"${p.email || ""}"`,
+          `"${p.status || "active"}"`,
+          p.balance,
+          format(new Date(p.createdAt), "dd.MM.yyyy", { locale: ru }),
+        ].join(",")
+      ),
+    ].join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `patients_${format(new Date(), "yyyy-MM-dd")}.csv`;
+    link.click();
+    toast.success("Экспорт завершен");
   };
 
   const handlePatientClick = (patient: Patient) => {
@@ -216,11 +385,38 @@ const Patients = () => {
     }
   };
 
+  const getStatusBadgeColor = (status?: string) => {
+    const statusColors: Record<string, string> = {
+      active: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+      in_treatment: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
+      got_well: "bg-green-500/10 text-green-600 dark:text-green-400",
+      inactive: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
+      transferred: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+    };
+    return statusColors[status || "active"] || statusColors.active;
+  };
+
+  const getStatusLabel = (status?: string) => {
+    const statusLabels: Record<string, string> = {
+      active: "Активный",
+      in_treatment: "На лечении",
+      got_well: "Вылечен",
+      inactive: "Неактивный",
+      transferred: "Переведен",
+    };
+    return statusLabels[status || "active"] || "Активный";
+  };
+
   return (
     <PageContainer contentClassName="space-y-4 sm:space-y-6">
       <Card className="bg-card p-4 sm:p-6">
           <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <h1 className="text-2xl font-bold">Пациенты</h1>
+            <div>
+              <h1 className="text-2xl font-bold">Пациенты</h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Всего: {filteredPatients.length} {filteredPatients.length === 1 ? "пациент" : filteredPatients.length < 5 ? "пациента" : "пациентов"}
+              </p>
+            </div>
             <AddPatientDialog
               open={isAddDialogOpen}
               onOpenChange={setIsAddDialogOpen}
@@ -252,91 +448,316 @@ const Patients = () => {
             </div>
           </div>
 
-          <div className="mb-6 flex flex-wrap gap-2">
-            <Button
-              variant={activeFilters.has("debt") ? "default" : "secondary"}
-              size="sm"
-              className="w-full text-sm sm:w-auto"
-              onClick={() => handleFilterClick("debt")}
-            >
-              Есть долг
-            </Button>
-            <Button
-              variant={activeFilters.has("untreated") ? "default" : "secondary"}
-              size="sm"
-              className="w-full text-sm sm:w-auto"
-              onClick={() => handleFilterClick("untreated")}
-            >
-              Нелеченные зубы
-            </Button>
-            <Button
-              variant={activeFilters.has("children") ? "default" : "secondary"}
-              size="sm"
-              className="w-full text-sm sm:w-auto"
-              onClick={() => handleFilterClick("children")}
-            >
-              Дети
-            </Button>
-            <Button
-              variant={activeFilters.has("adults") ? "default" : "secondary"}
-              size="sm"
-              className="w-full text-sm sm:w-auto"
-              onClick={() => handleFilterClick("adults")}
-            >
-              Взрослые
-            </Button>
-          </div>
-
-          <div className="space-y-3">
-            {filteredPatients.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                {searchQuery || activeFilters.size > 0
-                  ? "Пациенты не найдены"
-                  : "Нет пациентов. Добавьте первого пациента."}
+          <div className="mb-6 flex flex-col gap-4">
+            <div className="flex flex-wrap gap-2">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="Статус" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все статусы</SelectItem>
+                  <SelectItem value="active">Активный</SelectItem>
+                  <SelectItem value="in_treatment">На лечении</SelectItem>
+                  <SelectItem value="got_well">Вылечен</SelectItem>
+                  <SelectItem value="inactive">Неактивный</SelectItem>
+                  <SelectItem value="transferred">Переведен</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant={activeFilters.has("debt") ? "default" : "secondary"}
+                size="sm"
+                onClick={() => handleFilterClick("debt")}
+              >
+                Есть долг
+              </Button>
+              <Button
+                variant={activeFilters.has("untreated") ? "default" : "secondary"}
+                size="sm"
+                onClick={() => handleFilterClick("untreated")}
+              >
+                Нелеченные зубы
+              </Button>
+              <Button
+                variant={activeFilters.has("children") ? "default" : "secondary"}
+                size="sm"
+                onClick={() => handleFilterClick("children")}
+              >
+                Дети
+              </Button>
+              <Button
+                variant={activeFilters.has("adults") ? "default" : "secondary"}
+                size="sm"
+                onClick={() => handleFilterClick("adults")}
+              >
+                Взрослые
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExport}>
+                <Download className="h-4 w-4 mr-2" />
+                Экспорт
+              </Button>
+            </div>
+            {selectedPatients.size > 0 && (
+              <div className="flex items-center gap-2 p-3 bg-secondary rounded-lg">
+                <span className="text-sm font-medium">
+                  Выбрано: {selectedPatients.size}
+                </span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      Изменить статус
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => handleBulkStatusUpdate("active")}>
+                      Активный
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkStatusUpdate("in_treatment")}>
+                      На лечении
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkStatusUpdate("got_well")}>
+                      Вылечен
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkStatusUpdate("inactive")}>
+                      Неактивный
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleBulkStatusUpdate("transferred")}>
+                      Переведен
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                >
+                  Удалить выбранные
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedPatients(new Set())}
+                >
+                  Отменить выбор
+                </Button>
               </div>
-            ) : (
-              filteredPatients.map((patient) => {
-                // Calculate total charged (sum of all visit costs)
-                const patientVisits = visits.filter((v) => v.patientId === patient.id);
-                const totalCharged = patientVisits.reduce((sum, v) => sum + v.cost, 0);
-                const outstandingBalance = patient.balance;
-
-                return (
-                  <div
-                    key={patient.id}
-                    className="flex cursor-pointer flex-col gap-3 rounded-lg bg-secondary/50 p-4 transition-colors hover:bg-secondary sm:flex-row sm:items-center sm:justify-between"
-                    onClick={() => handlePatientClick(patient)}
-                  >
-                    <div className="w-full sm:flex-1">
-                      <div className="mb-1 font-medium">{patient.name}</div>
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {patient.phone}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Mail className="h-3 w-3" />
-                          {patient.email}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-left sm:text-right">
-                      <div className="font-medium text-primary">
-                        {totalCharged.toFixed(2)} смн
-                      </div>
-                      <div
-                        className={`text-sm ${
-                          outstandingBalance > 0 ? "text-orange-500" : "text-muted-foreground"
-                        }`}
-                      >
-                        {outstandingBalance > 0 ? `Долг: ${outstandingBalance.toFixed(2)} смн` : "Оплачено"}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
             )}
           </div>
+
+          {isLoading ? (
+            <div className="text-center py-12">
+              <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+              <p className="text-muted-foreground">Загрузка пациентов...</p>
+            </div>
+          ) : filteredPatients.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              {searchQuery || activeFilters.size > 0 || statusFilter !== "all"
+                ? "Пациенты не найдены"
+                : "Нет пациентов. Добавьте первого пациента."}
+            </div>
+          ) : (
+            <>
+              <Card className="overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-12">
+                        <Checkbox
+                          checked={selectedPatients.size === paginatedPatients.length && paginatedPatients.length > 0}
+                          onCheckedChange={handleSelectAll}
+                        />
+                      </TableHead>
+                      <TableHead className="cursor-pointer" onClick={() => handleSort("name")}>
+                        <div className="flex items-center gap-2">
+                          Имя
+                          {sortField === "name" && (
+                            sortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer" onClick={() => handleSort("phone")}>
+                        <div className="flex items-center gap-2">
+                          Телефон
+                          {sortField === "phone" && (
+                            sortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead className="cursor-pointer" onClick={() => handleSort("status")}>
+                        <div className="flex items-center gap-2">
+                          Статус
+                          {sortField === "status" && (
+                            sortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer text-right" onClick={() => handleSort("balance")}>
+                        <div className="flex items-center justify-end gap-2">
+                          Баланс
+                          {sortField === "balance" && (
+                            sortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer" onClick={() => handleSort("createdAt")}>
+                        <div className="flex items-center gap-2">
+                          Дата создания
+                          {sortField === "createdAt" && (
+                            sortDirection === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />
+                          )}
+                        </div>
+                      </TableHead>
+                      <TableHead className="w-24">Действия</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedPatients.map((patient) => {
+                      const patientVisits = visits.filter((v) => v.patientId === patient.id);
+                      const totalCharged = patientVisits.reduce((sum, v) => sum + v.cost, 0);
+                      const lastVisit = patientVisits.length > 0 
+                        ? patientVisits.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())[0]
+                        : null;
+                      
+                      const statusLabels: Record<string, string> = {
+                        active: "Активный",
+                        in_treatment: "На лечении",
+                        got_well: "Вылечен",
+                        inactive: "Неактивный",
+                        transferred: "Переведен",
+                      };
+                      
+                      const statusColors: Record<string, string> = {
+                        active: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+                        in_treatment: "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
+                        got_well: "bg-green-500/10 text-green-600 dark:text-green-400",
+                        inactive: "bg-gray-500/10 text-gray-600 dark:text-gray-400",
+                        transferred: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+                      };
+
+                      return (
+                        <TableRow
+                          key={patient.id}
+                          className="cursor-pointer"
+                          onClick={() => handlePatientClick(patient)}
+                        >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedPatients.has(patient.id)}
+                              onCheckedChange={() => handleSelectPatient(patient.id)}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">{patient.name}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Phone className="h-3 w-3 text-muted-foreground" />
+                              {patient.phone}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1">
+                              <Mail className="h-3 w-3 text-muted-foreground" />
+                              {patient.email || "-"}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge className={statusColors[patient.status || "active"] || statusColors.active}>
+                              {statusLabels[patient.status || "active"] || "Активный"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div>
+                              <div className="font-medium">
+                                {totalCharged.toFixed(2)} смн
+                              </div>
+                              <div className={`text-xs ${patient.balance > 0 ? "text-orange-500" : patient.balance < 0 ? "text-green-500" : "text-muted-foreground"}`}>
+                                {patient.balance > 0 ? `Долг: ${patient.balance.toFixed(2)}` : patient.balance < 0 ? `Переплата: ${Math.abs(patient.balance).toFixed(2)}` : "Оплачено"}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {format(new Date(patient.createdAt), "dd.MM.yyyy", { locale: ru })}
+                          </TableCell>
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handlePatientClick(patient)}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setPatientToDelete(patient);
+                                  setIsDeleteDialogOpen(true);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </Card>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-muted-foreground">
+                    Показано {((currentPage - 1) * itemsPerPage) + 1} - {Math.min(currentPage * itemsPerPage, filteredPatients.length)} из {filteredPatients.length}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      Назад
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        let pageNum;
+                        if (totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (currentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (currentPage >= totalPages - 2) {
+                          pageNum = totalPages - 4 + i;
+                        } else {
+                          pageNum = currentPage - 2 + i;
+                        }
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={currentPage === pageNum ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setCurrentPage(pageNum)}
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                    >
+                      Вперед
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
       </Card>
 
       {/* Patient Card Drawer */}

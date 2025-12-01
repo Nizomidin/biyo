@@ -34,37 +34,52 @@ const Analytics = () => {
   const [doctors, setDoctors] = useState(store.getDoctors());
   const [patients, setPatients] = useState(store.getPatients());
   const [visits, setVisits] = useState(store.getVisits());
+  const [isLoading, setIsLoading] = useState(true);
   
-  // Refresh all data periodically to sync with other users in the same clinic
+  // Fetch initial data and refresh periodically
   useEffect(() => {
-    const refreshData = () => {
+    const clinicId = store.getCurrentClinicId();
+    if (!clinicId) {
+      setIsLoading(false);
+      return;
+    }
+
+    const fetchData = async () => {
+      try {
+        const [fetchedDoctors, fetchedPatients, fetchedVisits] = await Promise.all([
+          store.fetchDoctors(clinicId),
+          store.fetchPatients(clinicId),
+          store.fetchVisits(clinicId),
+        ]);
+        setDoctors(fetchedDoctors);
+        setPatients(fetchedPatients);
+        setVisits(fetchedVisits);
+        setIsLoading(false);
+        setRefreshKey(prev => prev + 1);
+      } catch (error) {
+        console.error('Failed to fetch analytics data:', error);
+        setIsLoading(false);
+      }
+    };
+
+    // Initial fetch
+    fetchData();
+    
+    // Refresh every 10 seconds to catch changes from other users
+    const interval = setInterval(fetchData, 10000);
+    
+    // Listen to custom events for same-tab updates
+    const handleDataUpdate = () => {
       setDoctors(store.getDoctors());
       setPatients(store.getPatients());
       setVisits(store.getVisits());
       setRefreshKey(prev => prev + 1);
     };
     
-    // Refresh every 2 seconds to catch changes from other users
-    const interval = setInterval(refreshData, 2000);
-    
-    // Also listen to storage events (for cross-tab sync)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key && e.key.startsWith('biyo_')) {
-        refreshData();
-      }
-    };
-    
-    // Listen to custom events for same-tab updates
-    const handleDataUpdate = () => {
-      refreshData();
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
     window.addEventListener('biyo-data-updated', handleDataUpdate);
     
     return () => {
       clearInterval(interval);
-      window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('biyo-data-updated', handleDataUpdate);
     };
   }, []);
@@ -181,6 +196,21 @@ const Analytics = () => {
       })
       .sort((a, b) => b.revenue - a.revenue);
   }, [filteredVisits, doctors]);
+
+  if (isLoading) {
+    return (
+      <PageContainer contentClassName="space-y-4 sm:space-y-6">
+        <Card className="bg-card p-4 sm:p-6">
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+              <p className="text-muted-foreground">Загрузка аналитики...</p>
+            </div>
+          </div>
+        </Card>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer contentClassName="space-y-4 sm:space-y-6">
