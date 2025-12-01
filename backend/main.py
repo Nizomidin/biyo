@@ -275,14 +275,14 @@ def upsert_patient(payload: schemas.PatientPayload, db: Session = Depends(get_db
     patient.name = payload.name
     patient.phone = payload.phone
     # Validate email format if provided, otherwise use empty string
-    email_value = ""
     if payload.email and payload.email.strip():
         email_value = payload.email.strip()
         # Basic email validation
-        if "@" not in email_value:
+        if "@" not in email_value or len(email_value.split("@")) != 2:
             raise HTTPException(status_code=400, detail="Invalid email format")
-    
-    patient.email = email_value
+        patient.email = email_value
+    else:
+        patient.email = ""
     patient.date_of_birth = payload.dateOfBirth if payload.dateOfBirth else datetime.utcnow()
     patient.is_child = payload.isChild
     patient.address = payload.address
