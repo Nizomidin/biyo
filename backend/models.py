@@ -91,7 +91,7 @@ class Patient(Base):
     is_child: Mapped[bool] = mapped_column(Boolean, default=False)
     address: Mapped[Optional[str]] = mapped_column(String(255))
     notes: Mapped[Optional[str]] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(50), default="active", nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="active", server_default="active", nullable=False)
     teeth: Mapped[list] = mapped_column(JSON, default=list)
     services: Mapped[list] = mapped_column(JSON, default=list)
     balance: Mapped[float] = mapped_column(Float, default=0)
