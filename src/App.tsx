@@ -10,6 +10,7 @@ import Patients from "./pages/Patients";
 import Analytics from "./pages/Analytics";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
+import GetStarted from "./pages/GetStarted";
 import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 import MigrateData from "./pages/MigrateData";
@@ -116,6 +117,12 @@ const App = () => {
               path="/signup"
               element={
                 currentUser ? <Navigate to="/" replace /> : <SignUp />
+              }
+            />
+            <Route
+              path="/get-started"
+              element={
+                currentUser ? <Navigate to="/" replace /> : <GetStarted />
               }
             />
             <Route
