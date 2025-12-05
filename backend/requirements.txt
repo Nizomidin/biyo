@@ -1,8 +1,9 @@
-fastapi==0.115.0
-uvicorn[standard]==0.32.0
+fastapi==0.123.5
+uvicorn[standard]==0.38.0
 python-dotenv==1.0.1
-pydantic==2.9.2
+pydantic==2.12.5
 pydantic-settings==2.5.2
-python-multipart==0.0.12
-SQLAlchemy==2.0.23
-email-validator==2.1.0
+python-multipart==0.0.20
+SQLAlchemy==2.0.35
+email-validator==2.2.0
+pyinstaller==6.17.0

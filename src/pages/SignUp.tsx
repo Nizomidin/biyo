@@ -407,15 +407,6 @@ const SignUp = () => {
           display: none !important;
         }
       `}</style>
-      
-      <Button
-        variant="ghost"
-        onClick={() => navigate("/")}
-        className="absolute top-4 left-4 gap-2 z-10"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Назад
-      </Button>
 
       {/* Mobile: Show left content at top */}
       <div className="lg:hidden w-full px-6 pt-20 pb-6 bg-gradient-to-br from-emerald-50 to-teal-50">
@@ -437,31 +428,6 @@ const SignUp = () => {
             <span className="block">После этого мы свяжемся с вами</span>
             <span className="block">и продолжим с платной версией, если вы захотите</span>
           </p>
-          <div className="pt-2">
-            <a
-              href="/#pricing"
-              onClick={(e) => {
-                e.preventDefault();
-                navigate('/');
-                setTimeout(() => {
-                  const pricingElement = document.getElementById('pricing');
-                  if (pricingElement) {
-                    const headerOffset = 80;
-                    const elementPosition = pricingElement.getBoundingClientRect().top;
-                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-                    
-                    window.scrollTo({
-                      top: offsetPosition,
-                      behavior: 'smooth'
-                    });
-                  }
-                }, 100);
-              }}
-              className="text-sm text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
-            >
-              посмотреть цены
-            </a>
-          </div>
         </div>
       </div>
 
@@ -486,31 +452,6 @@ const SignUp = () => {
               <span className="block whitespace-nowrap">После этого мы свяжемся с вами</span>
               <span className="block whitespace-nowrap">и продолжим с платной версией, если вы захотите</span>
             </p>
-          </div>
-          <div className="pt-6">
-            <a
-              href="/#pricing"
-              onClick={(e) => {
-                e.preventDefault();
-                navigate('/');
-                setTimeout(() => {
-                  const pricingElement = document.getElementById('pricing');
-                  if (pricingElement) {
-                    const headerOffset = 80;
-                    const elementPosition = pricingElement.getBoundingClientRect().top;
-                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-                    
-                    window.scrollTo({
-                      top: offsetPosition,
-                      behavior: 'smooth'
-                    });
-                  }
-                }, 100);
-              }}
-              className="text-lg text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
-            >
-              посмотреть цены
-            </a>
           </div>
         </div>
       </div>

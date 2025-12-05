@@ -505,4 +505,4 @@ def delete_file(id: str = Query(...), clinicId: str = Query(...), db: Session = 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("BACKEND_PORT", "4000")), reload=True)
+    uvicorn.run(app, host="127.0.0.1", port=int(os.getenv("BACKEND_PORT", "4000")), reload=False)

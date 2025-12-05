@@ -1,22 +1,25 @@
 {
-  "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Biyo Dash",
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Serkor",
   "version": "0.1.0",
-  "identifier": "com.biyo.dash",
+  "identifier": "com.biyo.serkor",
   "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:5173",
+    "frontendDist": "../build",
+    "devUrl": "http://localhost:8080",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
       {
-        "title": "Biyo Dash",
-        "width": 1280,
-        "height": 800,
+        "title": "Serkor - Система управления стоматологией",
+        "width": 1400,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 768,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "center": true
       }
     ],
     "security": {
