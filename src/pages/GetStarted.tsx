@@ -5,6 +5,15 @@ import { ArrowLeft, Cloud, Download } from "lucide-react";
 const GetStarted = () => {
   const navigate = useNavigate();
 
+  const handleDownload = () => {
+    const link = document.createElement('a');
+    link.href = '/BiyoSetup.zip';
+    link.download = 'BiyoSetup.zip';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 flex flex-col lg:flex-row relative">
       {/* Force light mode */}
@@ -188,10 +197,7 @@ const GetStarted = () => {
           {/* Offline Download Card */}
           <div
             className="group relative overflow-hidden rounded-[28px] bg-gradient-to-br from-slate-300 via-slate-200 to-slate-300 p-[2px] shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer hover:-translate-y-1"
-            onClick={() => {
-              // TODO: Implement download functionality
-              console.log("Download offline version");
-            }}
+            onClick={handleDownload}
           >
             <div className="h-full rounded-[26px] bg-white p-8 space-y-4">
               <div className="flex items-center gap-4">
@@ -229,8 +235,7 @@ const GetStarted = () => {
                 className="w-full rounded-full bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-lg hover:shadow-xl transition-all"
                 onClick={(e) => {
                   e.stopPropagation();
-                  // TODO: Implement download functionality
-                  console.log("Download offline version");
+                  handleDownload();
                 }}
               >
                 Скачать для Windows
