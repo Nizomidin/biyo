@@ -83,18 +83,16 @@ const Login = () => {
       if (!userDoctor) {
         const doctorColors = ["blue", "emerald", "red", "yellow", "purple"];
         const randomColor = doctorColors[Math.floor(Math.random() * doctorColors.length)];
-        
-        const doctor: Doctor = {
-          id: `doctor_${Date.now()}_${Math.random()}`,
+
+        // Don't provide id - let backend generate it
+        await store.saveDoctor({
           name: user.email.split("@")[0], // Use email prefix as default name
           specialization: user.proficiency || undefined,
           email: user.email,
           userId: user.id, // Link doctor to user account
           color: randomColor,
           clinicId: user.clinicId,
-        };
-        
-        await store.saveDoctor(doctor);
+        } as Doctor);
       }
     }
     

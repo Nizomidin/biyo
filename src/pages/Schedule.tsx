@@ -240,18 +240,16 @@ const Schedule = () => {
           // Create new doctor for user
           const doctorColors = ["blue", "emerald", "red", "yellow", "purple"];
           const randomColor = doctorColors[Math.floor(Math.random() * doctorColors.length)];
-          
-          const newDoctor: Doctor = {
-            id: `doctor_${Date.now()}_${Math.random()}`,
+
+          // Don't provide id - let backend generate it
+          await store.saveDoctor({
             name: currentUser.email.split("@")[0],
             specialization: currentUser.proficiency || undefined,
             email: currentUser.email,
             userId: currentUser.id,
             color: randomColor,
             clinicId: currentUser.clinicId,
-          };
-          
-          await store.saveDoctor(newDoctor);
+          } as Doctor);
           setDoctorRefreshKey(prev => prev + 1); // Trigger re-render
         }
       }
@@ -1337,15 +1335,16 @@ function AddDoctorDialog({
       return;
     }
 
+    // For updates use existing id, for new doctors don't provide id
     const doctorData: Doctor = {
-      id: doctor?.id || `doctor_${Date.now()}_${Math.random()}`,
+      ...(doctor?.id ? { id: doctor.id } : {}),
       name: name.trim(),
       specialization: specialization?.trim() || undefined,
       email: email?.trim() || undefined,
       phone: phone?.trim() || undefined,
       color,
       clinicId,
-    };
+    } as Doctor;
 
     try {
       await store.saveDoctor(doctorData);
@@ -1807,37 +1806,13 @@ function AppointmentDialog({
       setIsLoading(false);
       return;
     }
-    const visitId = appointment?.id || `visit_${Date.now()}_${Math.random()}`;
     const cash = parseMoney(cashAmount);
     const wallet = parseMoney(ewalletAmount);
     const nowIso = new Date().toISOString();
-    const existingCashPayment = appointment?.payments?.find((payment) => payment.method === "cash");
-    const existingWalletPayment = appointment?.payments?.find((payment) => payment.method === "ewallet");
-    const makePaymentId = () => `payment_${Date.now()}_${Math.random()}`;
-    const payments: Payment[] = [];
 
-    if (cash > 0) {
-      payments.push({
-        id: existingCashPayment?.id || makePaymentId(),
-        visitId,
-        amount: cash,
-        date: existingCashPayment?.date || nowIso,
-        method: "cash",
-      });
-    }
-
-    if (wallet > 0) {
-      payments.push({
-        id: existingWalletPayment?.id || makePaymentId(),
-        visitId,
-        amount: wallet,
-        date: existingWalletPayment?.date || nowIso,
-        method: "ewallet",
-      });
-    }
-
+    // For updates use existing id, for new visits don't provide id
     const visit: Visit = {
-      id: visitId,
+      ...(appointment?.id ? { id: appointment.id } : {}),
       patientId,
       doctorId,
       startTime: startDateTime.toISOString(),
@@ -1846,16 +1821,32 @@ function AppointmentDialog({
       cost: totalPriceValue,
       notes,
       status: appointment?.status || "scheduled",
-      payments,
+      payments: [], // Payments are managed separately via PaymentService
       treatedTeeth: treatedTeethNumbers.length > 0 ? treatedTeethNumbers : undefined,
       createdAt: appointment?.createdAt || nowIso,
       cashAmount: cash,
       ewalletAmount: wallet,
       clinicId,
-    };
+    } as Visit;
 
     try {
-      await store.saveVisit(visit);
+      const savedVisit = await store.saveVisit(visit);
+
+      // Handle payments after visit is saved
+      if (cash > 0 || wallet > 0) {
+        const existingCashPayment = appointment?.payments?.find((p) => p.method === "cash");
+        const existingWalletPayment = appointment?.payments?.find((p) => p.method === "ewallet");
+
+        // Add cash payment if needed
+        if (cash > 0 && !existingCashPayment) {
+          await store.addPayment(savedVisit.id, cash, "cash");
+        }
+
+        // Add ewallet payment if needed
+        if (wallet > 0 && !existingWalletPayment) {
+          await store.addPayment(savedVisit.id, wallet, "ewallet");
+        }
+      }
 
       // Update patient balance
       const refreshedPatients = store.getPatients();
@@ -1897,8 +1888,8 @@ function AppointmentDialog({
       return;
     }
     
-    const newPatient: Patient = {
-      id: `patient_${Date.now()}_${Math.random()}`,
+    // Don't provide id - let backend generate it
+    const newPatientData = {
       name: newPatientName.trim(),
       phone: newPatientPhone?.trim() || "",
       email: "",
@@ -1910,9 +1901,9 @@ function AppointmentDialog({
       clinicId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    };
+    } as Patient;
     try {
-      await store.savePatient(newPatient);
+      const savedPatient = await store.savePatient(newPatientData);
       toast.success("Пациент создан");
       
       // Refresh patients list from API to include the new patient
@@ -1934,7 +1925,7 @@ function AppointmentDialog({
       }
       
       // Automatically select the newly created patient
-      setPatientId(newPatient.id);
+      setPatientId(savedPatient.id);
       
       // Close dialogs and reset form
       setIsCreatingPatientDialogOpen(false);
@@ -1957,18 +1948,17 @@ function AppointmentDialog({
       toast.error("Не удалось определить клинику. Повторите попытку после входа.");
       return;
     }
-    const newService = {
-      id: `service_${Date.now()}_${Math.random()}`,
+    // Don't provide id - let backend generate it
+    const savedService = await store.saveService({
       name: newServiceName.trim(),
       defaultPrice: 0,
       clinicId,
-    };
-    await store.saveService(newService);
+    } as Service);
     toast.success("Услуга создана");
     // Refresh services list
     setServices(store.getServices());
-    // Add the new service to selected services immediately
-    setSelectedServices([...selectedServices, { serviceId: newService.id, quantity: 1 }]);
+    // Add the new service to selected services using the server-generated id
+    setSelectedServices([...selectedServices, { serviceId: savedService.id, quantity: 1 }]);
     // Reset form and close
     setIsCreatingServiceDialogOpen(false);
     setNewServiceName("");
@@ -2531,14 +2521,12 @@ function ServicesDialog({
       return;
     }
 
-    const service = {
-      id: `service_${Date.now()}_${Math.random()}`,
+    // Don't provide id - let backend generate it
+    await store.saveService({
       name: newServiceName,
       defaultPrice: parseFloat(newServicePrice) || 0,
       clinicId,
-    };
-
-    await store.saveService(service);
+    } as Service);
     setServices(store.getServices());
     setNewServiceName("");
     setNewServicePrice("");
