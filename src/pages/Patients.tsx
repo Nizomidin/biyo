@@ -839,12 +839,17 @@ function AddPatientDialog({
       toast.error("Введите название услуги");
       return;
     }
-    const newService = {
-      id: `service_${Date.now()}_${Math.random()}`,
+    const clinicId = store.getCurrentClinicId();
+    if (!clinicId) {
+      toast.error("Не удалось определить клинику");
+      return;
+    }
+    // Don't provide id - let backend generate it
+    await store.saveService({
       name: newServiceName.trim(),
       defaultPrice: 0,
-    };
-    await store.saveService(newService);
+      clinicId,
+    } as Service);
     toast.success("Услуга создана");
     // Refresh services list
     setServices(store.getServices());
@@ -878,8 +883,8 @@ function AddPatientDialog({
       return;
     }
 
-    const patient: Patient = {
-      id: `patient_${Date.now()}_${Math.random()}`,
+    // Don't provide id - let backend generate it
+    const patientData = {
       name: name.trim(),
       phone: phone.trim(),
       email: email.trim() || "",
@@ -894,10 +899,10 @@ function AddPatientDialog({
       clinicId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    };
+    } as Patient;
 
     try {
-      await store.savePatient(patient);
+      await store.savePatient(patientData);
       toast.success("Пациент добавлен");
 
       // Trigger parent refresh
@@ -1704,16 +1709,14 @@ export function PatientCard({
         const file = selectedFiles[i];
         const base64 = await convertFileToBase64(file);
         
-        const patientFile: PatientFile = {
-          id: `file_${Date.now()}_${Math.random()}`,
+        // Don't provide id - let backend generate it
+        await store.saveFile({
           patientId: patient.id,
           name: file.name,
           file: base64,
           clinicId: store.getCurrentClinicId() || "",
           uploadedAt: new Date().toISOString(),
-        };
-
-        await store.saveFile(patientFile);
+        } as PatientFile);
       }
 
       const updatedFiles = store.getFiles().filter((f) => f.patientId === patient.id);
