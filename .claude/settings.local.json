@@ -1,9 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run dev:*)"
+      "Bash(npm run dev:*)",
+      "Bash(dir:*)",
+      "Bash(dotnet build:*)",
+      "Bash(copy \"C:\\Users\\user\\RiderProjects\\biyo\\src-tauri\\icons\\icon.ico\" \"C:\\Users\\user\\RiderProjects\\serkorInstaller\\SerkorLauncher\\serkor.ico\")",
+      "Bash(cmd /c copy \"C:\\Users\\user\\RiderProjects\\biyo\\src-tauri\\icons\\icon.ico\" \"C:\\Users\\user\\RiderProjects\\serkorInstaller\\SerkorLauncher\\serkor.ico\")",
+      "Bash(cmd /c \"if exist \"\"C:\\Users\\user\\RiderProjects\\serkorInstaller\\SerkorLauncher\\serkor.ico\"\" (echo File exists) else (echo File not found)\")"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "C:\\Users\\user\\RiderProjects\\Serkor"
+    ]
   }
 }
