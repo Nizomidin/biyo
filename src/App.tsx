@@ -116,13 +116,13 @@ const App = () => {
             <Route
               path="/signup"
               element={
-                currentUser ? <Navigate to="/" replace /> : <SignUp />
+                currentUser ? <Navigate to="/get-started" replace /> : <SignUp />
               }
             />
             <Route
               path="/get-started"
               element={
-                currentUser ? <Navigate to="/" replace /> : <GetStarted />
+                currentUser ? <GetStarted /> : <Navigate to="/signup" replace />
               }
             />
             <Route

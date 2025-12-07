@@ -307,7 +307,7 @@ const Landing = () => {
           </div>
 
           <div className="flex items-center gap-2 md:hidden">
-            <Link to="/get-started">
+            <Link to="/signup">
               <Button className="h-8 rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 px-4 text-xs font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
                 start
               </Button>
@@ -361,7 +361,7 @@ const Landing = () => {
                 Войти
               </Button>
             </Link>
-            <Link to="/get-started">
+            <Link to="/signup">
               <Button className="group h-9 rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 px-5 text-sm font-semibold text-white shadow-[0_16px_32px_-18px_rgba(16,185,129,0.85)] transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_22px_40px_-16px_rgba(15,118,110,0.7)] md:h-10 md:px-6 md:text-base">
                 Начать сейчас
               </Button>
@@ -466,7 +466,7 @@ const Landing = () => {
               Работает офлайн и онлайн.
             </p>
             <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-center">
-              <Link to="/get-started">
+              <Link to="/signup">
                 <Button
                   size="lg"
                   className="group w-full overflow-hidden rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 bg-[length:200%_200%] bg-[position:0%_50%] px-10 text-base font-semibold text-white shadow-[0_20px_44px_-18px_rgba(16,185,129,0.85)] transition-all duration-300 hover:-translate-y-1 hover:bg-[position:100%_50%] hover:shadow-[0_26px_50px_-20px_rgba(13,148,136,0.75)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400 sm:w-auto sm:px-12 sm:text-lg"
@@ -836,7 +836,7 @@ const Landing = () => {
               Начните управлять своей стоматологией уже сегодня
             </h2>
             <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link to="/get-started">
+              <Link to="/signup">
                 <Button
                   size="lg"
                   variant="secondary"
@@ -982,7 +982,7 @@ const Landing = () => {
             </div>
 
             <div className="flex flex-col gap-3 pt-2">
-              <Link to="/get-started">
+              <Link to="/signup">
                 <Button
                   className="w-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 px-6 py-3 text-base font-semibold text-white shadow-lg hover:shadow-xl"
                   onClick={() => setPricingModalOpen(false)}

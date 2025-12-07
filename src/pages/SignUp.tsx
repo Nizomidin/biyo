@@ -382,10 +382,10 @@ const SignUp = () => {
       
       toast.success("Регистрация успешна");
       setIsLoading(false);
-      
+
       // Small delay to ensure state propagates before navigation
       setTimeout(() => {
-        navigate("/", { replace: true });
+        navigate("/get-started", { replace: true });
       }, 100);
     } catch (error) {
       console.error("Registration error:", error);
