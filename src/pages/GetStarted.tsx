@@ -12,6 +12,7 @@ const GetStarted = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    navigate('/install-guide');
   };
 
   return (
