@@ -43,6 +43,27 @@ import {
 } from "@/components/ui/alert-dialog";
 import { store, Doctor, Visit, VisitService, Patient, ToothStatus, Payment } from "@/lib/store";
 import { format, addDays, startOfDay, parseISO, isSameDay } from "date-fns";
+
+/**
+ * Formats a UTC ISO datetime string to local time "HH:mm" format.
+ * This ensures correct timezone conversion regardless of how the Date was created.
+ */
+const formatToLocalTime = (isoString: string): string => {
+  const date = new Date(isoString);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+/**
+ * Creates an ISO string from a date and time that correctly represents local time in UTC.
+ * This fixes the timezone issue where local time was being sent as-is without proper UTC conversion.
+ */
+const createUTCISOString = (date: Date, hours: number, minutes: number): string => {
+  const localDate = new Date(date);
+  localDate.setHours(hours, minutes, 0, 0);
+  return localDate.toISOString();
+};
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
 import { PatientCard } from "@/pages/Patients";
@@ -258,20 +279,10 @@ const Schedule = () => {
     ensureDoctorProfile();
   }, [currentUser?.id]); // Only depend on user ID to avoid unnecessary re-runs
   
-  // Filter doctors: if user is not admin, only show their personal doctor
+  // Show all doctors from the clinic - filtering is done via UI filters
   const doctors = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.role === "admin") {
-      return allDoctors;
-    }
-    // For non-admin users, only show doctor linked to their user account
-    // Also try matching by email as fallback
-    const filtered = allDoctors.filter((doctor) => 
-      doctor.userId === currentUser.id || 
-      (doctor.email === currentUser.email && doctor.clinicId === currentUser.clinicId)
-    );
-    return filtered;
-  }, [currentUser, allDoctors, doctorRefreshKey, doctorsRefreshKey]);
+    return allDoctors;
+  }, [allDoctors]);
   
   // Fetch initial data and refresh periodically
   useEffect(() => {
@@ -290,6 +301,9 @@ const Schedule = () => {
         setPatients(fetchedPatients);
         setServices(fetchedServices);
         setVisits(fetchedVisits);
+        // Trigger memo recalculation
+        setDoctorsRefreshKey(prev => prev + 1);
+        setVisitsRefreshKey(prev => prev + 1);
       } catch (error) {
         console.error('Failed to fetch data:', error);
       }
@@ -395,7 +409,7 @@ const Schedule = () => {
         const haystack = [
           appointment.patientName,
           doctor?.name ?? "",
-          format(parseISO(appointment.visit.startTime), "HH:mm"),
+          formatToLocalTime(appointment.visit.startTime),
         ]
           .join(" ")
           .toLowerCase();
@@ -1525,12 +1539,12 @@ function AppointmentDialog({
   );
   const [startTime, setStartTime] = useState(
     appointment
-      ? format(parseISO(appointment.startTime), "HH:mm")
+      ? formatToLocalTime(appointment.startTime)
       : selectedSlot.time
   );
   const [endTime, setEndTime] = useState(
     appointment
-      ? format(parseISO(appointment.endTime), "HH:mm")
+      ? formatToLocalTime(appointment.endTime)
       : addMinutes(selectedSlot.time, 30)
   );
   const [teeth, setTeeth] = useState<ToothStatus[]>([]);
@@ -1639,8 +1653,8 @@ function AppointmentDialog({
       // Use setTimeout to ensure patients array is loaded
       const timeoutId = setTimeout(() => {
         const patient = patients.find((p) => p.id === appointment.patientId);
-        const appointmentStart = format(parseISO(appointment.startTime), "HH:mm");
-        const appointmentEnd = format(parseISO(appointment.endTime), "HH:mm");
+        const appointmentStart = formatToLocalTime(appointment.startTime);
+        const appointmentEnd = formatToLocalTime(appointment.endTime);
         
         setPatientId(appointment.patientId);
         setDoctorId(appointment.doctorId);

@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Cloud, Download } from "lucide-react";
+import { Globe, Download, CheckCircle } from "lucide-react";
 
 const GetStarted = () => {
   const navigate = useNavigate();
@@ -12,6 +12,7 @@ const GetStarted = () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    navigate('/install-guide');
   };
 
   return (
@@ -28,60 +29,21 @@ const GetStarted = () => {
         }
       `}</style>
 
-      <Button
-        variant="ghost"
-        onClick={() => navigate("/")}
-        className="absolute top-4 left-4 gap-2 z-10"
-      >
-        <ArrowLeft className="h-4 w-4" />
-        Назад
-      </Button>
-
       {/* Mobile: Show left content at top */}
-      <div className="lg:hidden w-full px-6 pt-20 pb-6 bg-gradient-to-br from-emerald-50 to-teal-50">
+      <div className="lg:hidden w-full px-6 pt-12 pb-6 bg-gradient-to-br from-emerald-50 to-teal-50">
         <div className="space-y-4 text-center max-w-md mx-auto">
           <div className="flex justify-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-200/60 shadow-sm">
-              <img
-                src="/ser.png"
-                alt="Serkor"
-                className="h-full w-full rounded-full object-cover"
-              />
+              <CheckCircle className="h-8 w-8 text-emerald-600" />
             </div>
           </div>
           <h2 className="text-2xl font-bold text-slate-900 leading-tight">
-            <span className="block">Используйте <span className="text-emerald-600">Serkor</span></span>
-            <span className="block"><span className="text-emerald-600">бесплатно</span> 2 недели</span>
+            <span className="block">Регистрация <span className="text-emerald-600">успешна!</span></span>
           </h2>
           <p className="text-base text-slate-700 leading-relaxed">
-            <span className="block">После этого мы свяжемся с вами</span>
-            <span className="block">и продолжим с платной версией, если вы захотите</span>
+            <span className="block">Добро пожаловать в Serkor</span>
+            <span className="block">Выберите как продолжить</span>
           </p>
-          <div className="pt-2">
-            <a
-              href="/#pricing"
-              onClick={(e) => {
-                e.preventDefault();
-                navigate('/');
-                setTimeout(() => {
-                  const pricingElement = document.getElementById('pricing');
-                  if (pricingElement) {
-                    const headerOffset = 80;
-                    const elementPosition = pricingElement.getBoundingClientRect().top;
-                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-
-                    window.scrollTo({
-                      top: offsetPosition,
-                      behavior: 'smooth'
-                    });
-                  }
-                }, 100);
-              }}
-              className="text-sm text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
-            >
-              посмотреть цены
-            </a>
-          </div>
         </div>
       </div>
 
@@ -90,47 +52,18 @@ const GetStarted = () => {
         <div className="max-w-md space-y-10">
           <div className="flex justify-center mb-6">
             <div className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-200/60 shadow-sm">
-              <img
-                src="/ser.png"
-                alt="Serkor"
-                className="h-full w-full rounded-full object-cover"
-              />
+              <CheckCircle className="h-12 w-12 text-emerald-600" />
             </div>
           </div>
           <div className="space-y-8">
-            <h2 className="text-6xl font-bold text-slate-900 leading-tight">
-              <span className="block whitespace-nowrap">Используйте <span className="text-emerald-600">Serkor</span></span>
-              <span className="block whitespace-nowrap"><span className="text-emerald-600">бесплатно</span> 2 недели</span>
+            <h2 className="text-5xl font-bold text-slate-900 leading-tight">
+              <span className="block whitespace-nowrap">Регистрация</span>
+              <span className="block whitespace-nowrap text-emerald-600">успешна!</span>
             </h2>
-            <p className="text-3xl text-slate-700 leading-relaxed">
-              <span className="block whitespace-nowrap">После этого мы свяжемся с вами</span>
-              <span className="block whitespace-nowrap">и продолжим с платной версией, если вы захотите</span>
+            <p className="text-2xl text-slate-700 leading-relaxed">
+              <span className="block">Добро пожаловать в Serkor</span>
+              <span className="block">Выберите как продолжить</span>
             </p>
-          </div>
-          <div className="pt-6">
-            <a
-              href="/#pricing"
-              onClick={(e) => {
-                e.preventDefault();
-                navigate('/');
-                setTimeout(() => {
-                  const pricingElement = document.getElementById('pricing');
-                  if (pricingElement) {
-                    const headerOffset = 80;
-                    const elementPosition = pricingElement.getBoundingClientRect().top;
-                    const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-
-                    window.scrollTo({
-                      top: offsetPosition,
-                      behavior: 'smooth'
-                    });
-                  }
-                }, 100);
-              }}
-              className="text-lg text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
-            >
-              посмотреть цены
-            </a>
           </div>
         </div>
       </div>
@@ -140,26 +73,26 @@ const GetStarted = () => {
         <div className="w-full max-w-md space-y-6">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold mb-2">
-              <span className="text-emerald-600">Выберите способ</span>
+              <span className="text-emerald-600">Как продолжить?</span>
             </h1>
-            <p className="text-slate-600">Как вы хотите использовать Serkor?</p>
+            <p className="text-slate-600">Выберите удобный способ работы</p>
           </div>
 
-          {/* Online Registration Card */}
+          {/* Continue in Web Card */}
           <div
             className="group relative overflow-hidden rounded-[28px] bg-gradient-to-br from-emerald-300 via-teal-300 to-emerald-400 p-[2px] shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer hover:-translate-y-1"
-            onClick={() => navigate("/signup")}
+            onClick={() => navigate("/")}
           >
             <div className="h-full rounded-[26px] bg-white p-8 space-y-4">
               <div className="flex items-center gap-4">
                 <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-teal-500 text-white shadow-lg">
-                  <Cloud className="h-7 w-7" />
+                  <Globe className="h-7 w-7" />
                 </div>
                 <div className="flex-1">
                   <h3 className="text-xl font-semibold text-slate-900">
-                    Регистрация онлайн
+                    Продолжить в веб
                   </h3>
-                  <p className="text-sm text-slate-600">Работайте из любого места</p>
+                  <p className="text-sm text-slate-600">Начать работу прямо сейчас</p>
                 </div>
               </div>
 
@@ -186,15 +119,15 @@ const GetStarted = () => {
                 className="w-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-white shadow-lg hover:shadow-xl transition-all"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate("/signup");
+                  navigate("/");
                 }}
               >
-                Начать онлайн
+                Продолжить в веб
               </Button>
             </div>
           </div>
 
-          {/* Offline Download Card */}
+          {/* Download Desktop Card */}
           <div
             className="group relative overflow-hidden rounded-[28px] bg-gradient-to-br from-slate-300 via-slate-200 to-slate-300 p-[2px] shadow-lg hover:shadow-xl transition-all duration-300 cursor-pointer hover:-translate-y-1"
             onClick={handleDownload}
@@ -206,7 +139,7 @@ const GetStarted = () => {
                 </div>
                 <div className="flex-1">
                   <h3 className="text-xl font-semibold text-slate-900">
-                    Скачать оффлайн версию
+                    Скачать десктоп
                   </h3>
                   <p className="text-sm text-slate-600">Работайте без интернета</p>
                 </div>
@@ -241,17 +174,6 @@ const GetStarted = () => {
                 Скачать для Windows
               </Button>
             </div>
-          </div>
-
-          <div className="text-center text-sm text-slate-600 pt-4">
-            <p>Уже есть аккаунт?</p>
-            <Button
-              variant="link"
-              className="p-0 h-auto text-emerald-600"
-              onClick={() => navigate("/login")}
-            >
-              Войти
-            </Button>
           </div>
         </div>
       </div>
