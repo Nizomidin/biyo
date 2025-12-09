@@ -197,13 +197,10 @@ export function Navbar() {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  className="hidden items-center gap-2 rounded-full pl-1.5 pr-3 md:flex"
+                  size="icon"
+                  className="hidden h-10 w-10 md:flex"
                 >
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src="/ser.png" alt={currentUser.email} />
-                    <AvatarFallback>{userInitials}</AvatarFallback>
-                  </Avatar>
-                  <span className="text-sm font-medium">{currentUser.email}</span>
+                  <Menu className="h-5 w-5" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent className="w-64" align="end">

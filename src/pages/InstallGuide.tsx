@@ -1,4 +1,4 @@
-import { CheckCircle, FolderOpen, MousePointer, Play, Shield } from "lucide-react";
+import { CheckCircle, FolderOpen, Play, Shield } from "lucide-react";
 
 const InstallGuide = () => {
   const steps = [
@@ -6,30 +6,24 @@ const InstallGuide = () => {
       number: 1,
       icon: FolderOpen,
       title: "Откройте скачанный файл",
-      description: "Найдите файл BiyoSetup.zip в папке загрузок и распакуйте его",
+      description: "Найдите файл BiyoSetup.zip в папке загрузок, распакуйте его и запустите установщик",
     },
     {
       number: 2,
-      icon: MousePointer,
-      title: "Запустите установщик",
-      description: "Дважды кликните на файл SerkorSetup-1.0.0.exe",
-    },
-    {
-      number: 3,
       icon: Shield,
       title: "Нажмите «Подробнее»",
       description: "Windows может показать предупреждение. Нажмите на ссылку «Подробнее»",
       image: "/setup_moreinfo.png",
     },
     {
-      number: 4,
+      number: 3,
       icon: Play,
       title: "Нажмите «Выполнить в любом случае»",
       description: "После этого появится кнопка «Выполнить в любом случае» — нажмите на неё",
       image: "/setup_runanyway.png",
     },
     {
-      number: 5,
+      number: 4,
       icon: CheckCircle,
       title: "Завершите установку",
       description: "Следуйте инструкциям установщика для завершения процесса",
