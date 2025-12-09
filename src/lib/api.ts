@@ -12,7 +12,39 @@ import type {
   Payment,
 } from "./store";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+// Runtime config - loaded from /config.json (can be changed without rebuild)
+interface AppConfig {
+  apiUrl: string;
+}
+
+let cachedConfig: AppConfig | null = null;
+
+async function loadConfig(): Promise<AppConfig> {
+  if (cachedConfig) return cachedConfig;
+
+  try {
+    const response = await fetch("/config.json");
+    if (response.ok) {
+      cachedConfig = await response.json();
+      return cachedConfig!;
+    }
+  } catch {
+    // Fall through to default
+  }
+
+  // Fallback to env variable or default
+  cachedConfig = {
+    apiUrl: import.meta.env.VITE_API_URL || "http://localhost:4000/api"
+  };
+  return cachedConfig;
+}
+
+// Initialize config immediately
+const configPromise = loadConfig();
+
+function getApiBaseUrl(): string {
+  return cachedConfig?.apiUrl || import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+}
 
 const isJsonResponse = (response: Response) => {
   const contentType = response.headers.get("content-type") ?? "";
@@ -69,7 +101,9 @@ export class ApiError extends Error {
 
 class ApiClient {
   private async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-    const url = endpoint.startsWith("http") ? endpoint : `${API_BASE_URL}${endpoint}`;
+    // Ensure config is loaded before making requests
+    await configPromise;
+    const url = endpoint.startsWith("http") ? endpoint : `${getApiBaseUrl()}${endpoint}`;
 
     try {
       const response = await fetch(url, {

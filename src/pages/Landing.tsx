@@ -410,7 +410,7 @@ const Landing = () => {
                       Связаться с нами
                     </Button>
                   </button>
-                  <Link to="/signup" onClick={() => setMobileMenuOpen(false)} className="flex-1">
+                  <Link to="/get-started" onClick={() => setMobileMenuOpen(false)} className="flex-1">
                     <Button className="h-7 w-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 text-[10px] font-semibold text-white shadow hover:-translate-y-0.5 hover:shadow-lg">
                       Начать сейчас
                     </Button>

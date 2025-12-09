@@ -43,6 +43,27 @@ import {
 } from "@/components/ui/alert-dialog";
 import { store, Doctor, Visit, VisitService, Patient, ToothStatus, Payment } from "@/lib/store";
 import { format, addDays, startOfDay, parseISO, isSameDay } from "date-fns";
+
+/**
+ * Formats a UTC ISO datetime string to local time "HH:mm" format.
+ * This ensures correct timezone conversion regardless of how the Date was created.
+ */
+const formatToLocalTime = (isoString: string): string => {
+  const date = new Date(isoString);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+/**
+ * Creates an ISO string from a date and time that correctly represents local time in UTC.
+ * This fixes the timezone issue where local time was being sent as-is without proper UTC conversion.
+ */
+const createUTCISOString = (date: Date, hours: number, minutes: number): string => {
+  const localDate = new Date(date);
+  localDate.setHours(hours, minutes, 0, 0);
+  return localDate.toISOString();
+};
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
 import { PatientCard } from "@/pages/Patients";
@@ -139,6 +160,7 @@ interface AppointmentDisplay {
   id: string;
   doctorId: string;
   patientName: string;
+  patientPhone: string;
   startTime: string;
   duration: number;
   color: string;
@@ -240,18 +262,16 @@ const Schedule = () => {
           // Create new doctor for user
           const doctorColors = ["blue", "emerald", "red", "yellow", "purple"];
           const randomColor = doctorColors[Math.floor(Math.random() * doctorColors.length)];
-          
-          const newDoctor: Doctor = {
-            id: `doctor_${Date.now()}_${Math.random()}`,
+
+          // Don't provide id - let backend generate it
+          await store.saveDoctor({
             name: currentUser.email.split("@")[0],
             specialization: currentUser.proficiency || undefined,
             email: currentUser.email,
             userId: currentUser.id,
             color: randomColor,
             clinicId: currentUser.clinicId,
-          };
-          
-          await store.saveDoctor(newDoctor);
+          } as Doctor);
           setDoctorRefreshKey(prev => prev + 1); // Trigger re-render
         }
       }
@@ -260,20 +280,10 @@ const Schedule = () => {
     ensureDoctorProfile();
   }, [currentUser?.id]); // Only depend on user ID to avoid unnecessary re-runs
   
-  // Filter doctors: if user is not admin, only show their personal doctor
+  // Show all doctors from the clinic - filtering is done via UI filters
   const doctors = useMemo(() => {
-    if (!currentUser) return [];
-    if (currentUser.role === "admin") {
-      return allDoctors;
-    }
-    // For non-admin users, only show doctor linked to their user account
-    // Also try matching by email as fallback
-    const filtered = allDoctors.filter((doctor) => 
-      doctor.userId === currentUser.id || 
-      (doctor.email === currentUser.email && doctor.clinicId === currentUser.clinicId)
-    );
-    return filtered;
-  }, [currentUser, allDoctors, doctorRefreshKey, doctorsRefreshKey]);
+    return allDoctors;
+  }, [allDoctors]);
   
   // Fetch initial data and refresh periodically
   useEffect(() => {
@@ -292,6 +302,9 @@ const Schedule = () => {
         setPatients(fetchedPatients);
         setServices(fetchedServices);
         setVisits(fetchedVisits);
+        // Trigger memo recalculation
+        setDoctorsRefreshKey(prev => prev + 1);
+        setVisitsRefreshKey(prev => prev + 1);
       } catch (error) {
         console.error('Failed to fetch data:', error);
       }
@@ -370,6 +383,7 @@ const Schedule = () => {
           id: visit.id,
           doctorId: visit.doctorId,
           patientName: patient?.name || "Неизвестный",
+          patientPhone: patient?.phone || "",
           startTime: format(start, "HH:mm"),
           duration,
           color: doctor?.color || "blue",
@@ -397,7 +411,7 @@ const Schedule = () => {
         const haystack = [
           appointment.patientName,
           doctor?.name ?? "",
-          format(parseISO(appointment.visit.startTime), "HH:mm"),
+          formatToLocalTime(appointment.visit.startTime),
         ]
           .join(" ")
           .toLowerCase();
@@ -729,54 +743,10 @@ const Schedule = () => {
                   </TooltipContent>
                 </Tooltip>
               )}
-              <Tooltip delayDuration={100}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-2"
-                    onClick={handleManualRefresh}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Обновить
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Принудительно обновить данные</p>
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip delayDuration={100}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={autoScrollEnabled ? "default" : "outline"}
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => setAutoScrollEnabled((prev) => !prev)}
-                  >
-                    <Clock className="h-4 w-4" />
-                    {autoScrollEnabled ? "Автопрокрутка" : "Ручной режим"}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Прокручивать расписание к текущему времени автоматически</p>
-                </TooltipContent>
-              </Tooltip>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => {
-                  setAutoScrollEnabled(false);
-                  scrollToCurrentTime();
-                }}
-              >
-                <LocateFixed className="h-4 w-4" />
-                Сейчас
-              </Button>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard label="Записи" value={scheduleStats.total} badge={scheduleStats.total}>
               {scheduleStats.scheduled} запланировано на {selectedDateStr}
             </StatCard>
@@ -792,13 +762,6 @@ const Schedule = () => {
               {outstandingBalance > 0
                 ? `Остаток к оплате: ${MONEY_FORMATTER.format(outstandingBalance)} смн`
                 : "Все оплачено"}
-            </StatCard>
-            <StatCard label="Загрузка" value={`${scheduleStats.occupancy}%`} badge={`${scheduleStats.occupancy}%`}>
-              {scheduleStats.totalAvailableMinutes > 0
-                ? `${Math.round(scheduleStats.occupiedMinutes / 60)} из ${Math.round(
-                    scheduleStats.totalAvailableMinutes / 60
-                  )} часов занято`
-                : "Нет доступных слотов"}
             </StatCard>
           </div>
 
@@ -867,89 +830,6 @@ const Schedule = () => {
                   </Button>
                 )}
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full justify-between gap-2 sm:w-auto sm:justify-center">
-                    <Filter className="h-4 w-4" />
-                    {selectedDoctorFilters.length > 0
-                      ? `Врачи (${selectedDoctorFilters.length})`
-                      : "Все врачи"}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64" align="end">
-                  <DropdownMenuLabel>Фильтр по врачам</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {doctors.length === 0 ? (
-                    <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                      Нет доступных врачей
-                    </div>
-                  ) : (
-                    doctors.map((doctor) => (
-                      <DropdownMenuCheckboxItem
-                        key={doctor.id}
-                        checked={selectedDoctorFilters.includes(doctor.id)}
-                        onCheckedChange={() => toggleDoctorFilter(doctor.id)}
-                      >
-                        {doctor.name}
-                      </DropdownMenuCheckboxItem>
-                    ))
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      setSelectedDoctorFilters([]);
-                    }}
-                  >
-                    Показать всех
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full justify-between gap-2 sm:w-auto sm:justify-center">
-                    <Filter className="h-4 w-4" />
-                    Статус
-                    {!isStatusFilterDefault && (
-                      <Badge variant="secondary" className="ml-1">
-                        {activeStatusFilters.size}
-                      </Badge>
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end">
-                  <DropdownMenuLabel>Статусы записей</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {(Object.keys(STATUS_LABELS) as Visit["status"][]).map((status) => (
-                    <DropdownMenuCheckboxItem
-                      key={status}
-                      checked={activeStatusFilters.has(status)}
-                      onCheckedChange={() => toggleStatusFilter(status)}
-                    >
-                      {STATUS_LABELS[status]}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      setActiveStatusFilters(new Set<Visit["status"]>(DEFAULT_STATUS_FILTERS));
-                    }}
-                  >
-                    Сбросить фильтр
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              {filtersApplied && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearFilters}
-                  className="w-full justify-center text-muted-foreground hover:text-foreground sm:w-auto"
-                >
-                  Очистить
-                </Button>
-              )}
             </div>
           </div>
 
@@ -1132,7 +1012,12 @@ const Schedule = () => {
                   onClick={() => handleAppointmentClick(appointment)}
                 >
                   <div className="flex items-center justify-between h-full">
-                    <span className="truncate">{appointment.patientName}</span>
+                    <span className="truncate">
+                      {appointment.patientName}
+                      {appointment.patientPhone && (
+                        <span className="opacity-75"> · {appointment.patientPhone}</span>
+                      )}
+                    </span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1337,15 +1222,16 @@ function AddDoctorDialog({
       return;
     }
 
+    // For updates use existing id, for new doctors don't provide id
     const doctorData: Doctor = {
-      id: doctor?.id || `doctor_${Date.now()}_${Math.random()}`,
+      ...(doctor?.id ? { id: doctor.id } : {}),
       name: name.trim(),
       specialization: specialization?.trim() || undefined,
       email: email?.trim() || undefined,
       phone: phone?.trim() || undefined,
       color,
       clinicId,
-    };
+    } as Doctor;
 
     try {
       await store.saveDoctor(doctorData);
@@ -1526,12 +1412,12 @@ function AppointmentDialog({
   );
   const [startTime, setStartTime] = useState(
     appointment
-      ? format(parseISO(appointment.startTime), "HH:mm")
+      ? formatToLocalTime(appointment.startTime)
       : selectedSlot.time
   );
   const [endTime, setEndTime] = useState(
     appointment
-      ? format(parseISO(appointment.endTime), "HH:mm")
+      ? formatToLocalTime(appointment.endTime)
       : addMinutes(selectedSlot.time, 30)
   );
   const [teeth, setTeeth] = useState<ToothStatus[]>([]);
@@ -1640,8 +1526,8 @@ function AppointmentDialog({
       // Use setTimeout to ensure patients array is loaded
       const timeoutId = setTimeout(() => {
         const patient = patients.find((p) => p.id === appointment.patientId);
-        const appointmentStart = format(parseISO(appointment.startTime), "HH:mm");
-        const appointmentEnd = format(parseISO(appointment.endTime), "HH:mm");
+        const appointmentStart = formatToLocalTime(appointment.startTime);
+        const appointmentEnd = formatToLocalTime(appointment.endTime);
         
         setPatientId(appointment.patientId);
         setDoctorId(appointment.doctorId);
@@ -1796,48 +1682,19 @@ function AppointmentDialog({
     });
 
     const totalPriceValue = parseMoney(totalPrice);
-    if (!totalPrice || totalPriceValue <= 0) {
-      toast.error("Укажите корректную общую стоимость визита");
-      setIsLoading(false);
-      return;
-    }
     const clinicId = store.getCurrentClinicId();
     if (!clinicId) {
       toast.error("Не удалось определить клинику. Повторите попытку после входа.");
       setIsLoading(false);
       return;
     }
-    const visitId = appointment?.id || `visit_${Date.now()}_${Math.random()}`;
     const cash = parseMoney(cashAmount);
     const wallet = parseMoney(ewalletAmount);
     const nowIso = new Date().toISOString();
-    const existingCashPayment = appointment?.payments?.find((payment) => payment.method === "cash");
-    const existingWalletPayment = appointment?.payments?.find((payment) => payment.method === "ewallet");
-    const makePaymentId = () => `payment_${Date.now()}_${Math.random()}`;
-    const payments: Payment[] = [];
 
-    if (cash > 0) {
-      payments.push({
-        id: existingCashPayment?.id || makePaymentId(),
-        visitId,
-        amount: cash,
-        date: existingCashPayment?.date || nowIso,
-        method: "cash",
-      });
-    }
-
-    if (wallet > 0) {
-      payments.push({
-        id: existingWalletPayment?.id || makePaymentId(),
-        visitId,
-        amount: wallet,
-        date: existingWalletPayment?.date || nowIso,
-        method: "ewallet",
-      });
-    }
-
+    // For updates use existing id, for new visits don't provide id
     const visit: Visit = {
-      id: visitId,
+      ...(appointment?.id ? { id: appointment.id } : {}),
       patientId,
       doctorId,
       startTime: startDateTime.toISOString(),
@@ -1846,16 +1703,32 @@ function AppointmentDialog({
       cost: totalPriceValue,
       notes,
       status: appointment?.status || "scheduled",
-      payments,
+      payments: [], // Payments are managed separately via PaymentService
       treatedTeeth: treatedTeethNumbers.length > 0 ? treatedTeethNumbers : undefined,
       createdAt: appointment?.createdAt || nowIso,
       cashAmount: cash,
       ewalletAmount: wallet,
       clinicId,
-    };
+    } as Visit;
 
     try {
-      await store.saveVisit(visit);
+      const savedVisit = await store.saveVisit(visit);
+
+      // Handle payments after visit is saved
+      if (cash > 0 || wallet > 0) {
+        const existingCashPayment = appointment?.payments?.find((p) => p.method === "cash");
+        const existingWalletPayment = appointment?.payments?.find((p) => p.method === "ewallet");
+
+        // Add cash payment if needed
+        if (cash > 0 && !existingCashPayment) {
+          await store.addPayment(savedVisit.id, cash, "cash");
+        }
+
+        // Add ewallet payment if needed
+        if (wallet > 0 && !existingWalletPayment) {
+          await store.addPayment(savedVisit.id, wallet, "ewallet");
+        }
+      }
 
       // Update patient balance
       const refreshedPatients = store.getPatients();
@@ -1897,8 +1770,8 @@ function AppointmentDialog({
       return;
     }
     
-    const newPatient: Patient = {
-      id: `patient_${Date.now()}_${Math.random()}`,
+    // Don't provide id - let backend generate it
+    const newPatientData = {
       name: newPatientName.trim(),
       phone: newPatientPhone?.trim() || "",
       email: "",
@@ -1910,9 +1783,9 @@ function AppointmentDialog({
       clinicId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-    };
+    } as Patient;
     try {
-      await store.savePatient(newPatient);
+      const savedPatient = await store.savePatient(newPatientData);
       toast.success("Пациент создан");
       
       // Refresh patients list from API to include the new patient
@@ -1934,7 +1807,7 @@ function AppointmentDialog({
       }
       
       // Automatically select the newly created patient
-      setPatientId(newPatient.id);
+      setPatientId(savedPatient.id);
       
       // Close dialogs and reset form
       setIsCreatingPatientDialogOpen(false);
@@ -1957,18 +1830,17 @@ function AppointmentDialog({
       toast.error("Не удалось определить клинику. Повторите попытку после входа.");
       return;
     }
-    const newService = {
-      id: `service_${Date.now()}_${Math.random()}`,
+    // Don't provide id - let backend generate it
+    const savedService = await store.saveService({
       name: newServiceName.trim(),
       defaultPrice: 0,
       clinicId,
-    };
-    await store.saveService(newService);
+    } as Service);
     toast.success("Услуга создана");
     // Refresh services list
     setServices(store.getServices());
-    // Add the new service to selected services immediately
-    setSelectedServices([...selectedServices, { serviceId: newService.id, quantity: 1 }]);
+    // Add the new service to selected services using the server-generated id
+    setSelectedServices([...selectedServices, { serviceId: savedService.id, quantity: 1 }]);
     // Reset form and close
     setIsCreatingServiceDialogOpen(false);
     setNewServiceName("");
@@ -2040,12 +1912,10 @@ function AppointmentDialog({
                           value={`${patient.name} ${patient.phone} ${patient.email}`}
                           onSelect={() => handlePatientSelect(patient.id)}
                         >
-                          <div className="flex flex-col">
-                            <span className="font-medium">{patient.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {patient.phone} • {patient.email}
-                            </span>
-                          </div>
+                          <span className="font-medium">{patient.name}</span>
+                          {patient.phone && (
+                            <span className="ml-2 opacity-70">· {patient.phone}</span>
+                          )}
                         </CommandItem>
                       ))}
                     </CommandGroup>
@@ -2067,11 +1937,15 @@ function AppointmentDialog({
                 </Command>
               </PopoverContent>
             </Popover>
-            {patientId && (
-              <p className="text-xs text-muted-foreground">
-                Выбран: {patients.find((p) => p.id === patientId)?.name}
-              </p>
-            )}
+            {patientId && (() => {
+              const selectedPatientData = patients.find((p) => p.id === patientId);
+              return (
+                <p className="text-xs text-muted-foreground">
+                  Выбран: {selectedPatientData?.name}
+                  {selectedPatientData?.phone && ` · ${selectedPatientData.phone}`}
+                </p>
+              );
+            })()}
           </div>
 
           <div className="space-y-2">
@@ -2301,7 +2175,7 @@ function AppointmentDialog({
             <div className="space-y-3 border-b pb-4">
               <div className="space-y-2">
                 <Label htmlFor="total-price" className="text-sm font-medium">
-                  Общая стоимость визита <span className="text-destructive">*</span>
+                  Общая стоимость визита
                 </Label>
                 <p className="text-xs text-muted-foreground">
                   Введите общую стоимость всех услуг за этот визит
@@ -2531,14 +2405,12 @@ function ServicesDialog({
       return;
     }
 
-    const service = {
-      id: `service_${Date.now()}_${Math.random()}`,
+    // Don't provide id - let backend generate it
+    await store.saveService({
       name: newServiceName,
       defaultPrice: parseFloat(newServicePrice) || 0,
       clinicId,
-    };
-
-    await store.saveService(service);
+    } as Service);
     setServices(store.getServices());
     setNewServiceName("");
     setNewServicePrice("");
