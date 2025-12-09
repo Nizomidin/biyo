@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { parseISO, differenceInCalendarDays } from "date-fns";
 import {
   Calendar,
+  Download,
   LogOut,
   Menu,
   Moon,
@@ -17,6 +18,7 @@ import {
 import { toast } from "sonner";
 
 import { store } from "@/lib/store";
+import { isWeb } from "@/lib/utils";
 import { useTheme } from "@/hooks/use-theme";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -178,6 +180,19 @@ export function Navbar() {
             >
               {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </Button>
+            {isWeb() && (
+              <Button
+                variant="default"
+                size="sm"
+                asChild
+                className="hidden md:flex"
+              >
+                <a href="/BiyoSetup.zip" download>
+                  <Download className="mr-2 h-4 w-4" />
+                  Скачать
+                </a>
+              </Button>
+            )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -268,6 +283,14 @@ export function Navbar() {
                     <Badge variant="secondary" className="justify-center py-2">
                       Пробный период: {trialDaysRemaining} дней
                     </Badge>
+                  )}
+                  {isWeb() && (
+                    <Button variant="default" asChild>
+                      <a href="/BiyoSetup.zip" download>
+                        <Download className="mr-2 h-4 w-4" />
+                        Скачать приложение
+                      </a>
+                    </Button>
                   )}
                   <Button
                     variant="outline"
