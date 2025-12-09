@@ -7,12 +7,14 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "build:web": "node scripts/set-platform.mjs web && vite build",
+    "build:desktop": "node scripts/set-platform.mjs desktop && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "tsx backend/src/server.ts",
     "server:dev": "tsx watch backend/src/server.ts",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build && node scripts/set-platform.mjs web"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

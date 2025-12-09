@@ -160,6 +160,7 @@ interface AppointmentDisplay {
   id: string;
   doctorId: string;
   patientName: string;
+  patientPhone: string;
   startTime: string;
   duration: number;
   color: string;
@@ -382,6 +383,7 @@ const Schedule = () => {
           id: visit.id,
           doctorId: visit.doctorId,
           patientName: patient?.name || "Неизвестный",
+          patientPhone: patient?.phone || "",
           startTime: format(start, "HH:mm"),
           duration,
           color: doctor?.color || "blue",
@@ -741,54 +743,10 @@ const Schedule = () => {
                   </TooltipContent>
                 </Tooltip>
               )}
-              <Tooltip delayDuration={100}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="gap-2"
-                    onClick={handleManualRefresh}
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                    Обновить
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Принудительно обновить данные</p>
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip delayDuration={100}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={autoScrollEnabled ? "default" : "outline"}
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => setAutoScrollEnabled((prev) => !prev)}
-                  >
-                    <Clock className="h-4 w-4" />
-                    {autoScrollEnabled ? "Автопрокрутка" : "Ручной режим"}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Прокручивать расписание к текущему времени автоматически</p>
-                </TooltipContent>
-              </Tooltip>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => {
-                  setAutoScrollEnabled(false);
-                  scrollToCurrentTime();
-                }}
-              >
-                <LocateFixed className="h-4 w-4" />
-                Сейчас
-              </Button>
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard label="Записи" value={scheduleStats.total} badge={scheduleStats.total}>
               {scheduleStats.scheduled} запланировано на {selectedDateStr}
             </StatCard>
@@ -804,13 +762,6 @@ const Schedule = () => {
               {outstandingBalance > 0
                 ? `Остаток к оплате: ${MONEY_FORMATTER.format(outstandingBalance)} смн`
                 : "Все оплачено"}
-            </StatCard>
-            <StatCard label="Загрузка" value={`${scheduleStats.occupancy}%`} badge={`${scheduleStats.occupancy}%`}>
-              {scheduleStats.totalAvailableMinutes > 0
-                ? `${Math.round(scheduleStats.occupiedMinutes / 60)} из ${Math.round(
-                    scheduleStats.totalAvailableMinutes / 60
-                  )} часов занято`
-                : "Нет доступных слотов"}
             </StatCard>
           </div>
 
@@ -879,89 +830,6 @@ const Schedule = () => {
                   </Button>
                 )}
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full justify-between gap-2 sm:w-auto sm:justify-center">
-                    <Filter className="h-4 w-4" />
-                    {selectedDoctorFilters.length > 0
-                      ? `Врачи (${selectedDoctorFilters.length})`
-                      : "Все врачи"}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-64" align="end">
-                  <DropdownMenuLabel>Фильтр по врачам</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {doctors.length === 0 ? (
-                    <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                      Нет доступных врачей
-                    </div>
-                  ) : (
-                    doctors.map((doctor) => (
-                      <DropdownMenuCheckboxItem
-                        key={doctor.id}
-                        checked={selectedDoctorFilters.includes(doctor.id)}
-                        onCheckedChange={() => toggleDoctorFilter(doctor.id)}
-                      >
-                        {doctor.name}
-                      </DropdownMenuCheckboxItem>
-                    ))
-                  )}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      setSelectedDoctorFilters([]);
-                    }}
-                  >
-                    Показать всех
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="w-full justify-between gap-2 sm:w-auto sm:justify-center">
-                    <Filter className="h-4 w-4" />
-                    Статус
-                    {!isStatusFilterDefault && (
-                      <Badge variant="secondary" className="ml-1">
-                        {activeStatusFilters.size}
-                      </Badge>
-                    )}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end">
-                  <DropdownMenuLabel>Статусы записей</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {(Object.keys(STATUS_LABELS) as Visit["status"][]).map((status) => (
-                    <DropdownMenuCheckboxItem
-                      key={status}
-                      checked={activeStatusFilters.has(status)}
-                      onCheckedChange={() => toggleStatusFilter(status)}
-                    >
-                      {STATUS_LABELS[status]}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      setActiveStatusFilters(new Set<Visit["status"]>(DEFAULT_STATUS_FILTERS));
-                    }}
-                  >
-                    Сбросить фильтр
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              {filtersApplied && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearFilters}
-                  className="w-full justify-center text-muted-foreground hover:text-foreground sm:w-auto"
-                >
-                  Очистить
-                </Button>
-              )}
             </div>
           </div>
 
@@ -1144,7 +1012,12 @@ const Schedule = () => {
                   onClick={() => handleAppointmentClick(appointment)}
                 >
                   <div className="flex items-center justify-between h-full">
-                    <span className="truncate">{appointment.patientName}</span>
+                    <span className="truncate">
+                      {appointment.patientName}
+                      {appointment.patientPhone && (
+                        <span className="opacity-75"> · {appointment.patientPhone}</span>
+                      )}
+                    </span>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1809,11 +1682,6 @@ function AppointmentDialog({
     });
 
     const totalPriceValue = parseMoney(totalPrice);
-    if (!totalPrice || totalPriceValue <= 0) {
-      toast.error("Укажите корректную общую стоимость визита");
-      setIsLoading(false);
-      return;
-    }
     const clinicId = store.getCurrentClinicId();
     if (!clinicId) {
       toast.error("Не удалось определить клинику. Повторите попытку после входа.");
@@ -2044,12 +1912,10 @@ function AppointmentDialog({
                           value={`${patient.name} ${patient.phone} ${patient.email}`}
                           onSelect={() => handlePatientSelect(patient.id)}
                         >
-                          <div className="flex flex-col">
-                            <span className="font-medium">{patient.name}</span>
-                            <span className="text-xs text-muted-foreground">
-                              {patient.phone} • {patient.email}
-                            </span>
-                          </div>
+                          <span className="font-medium">{patient.name}</span>
+                          {patient.phone && (
+                            <span className="ml-2 opacity-70">· {patient.phone}</span>
+                          )}
                         </CommandItem>
                       ))}
                     </CommandGroup>
@@ -2071,11 +1937,15 @@ function AppointmentDialog({
                 </Command>
               </PopoverContent>
             </Popover>
-            {patientId && (
-              <p className="text-xs text-muted-foreground">
-                Выбран: {patients.find((p) => p.id === patientId)?.name}
-              </p>
-            )}
+            {patientId && (() => {
+              const selectedPatientData = patients.find((p) => p.id === patientId);
+              return (
+                <p className="text-xs text-muted-foreground">
+                  Выбран: {selectedPatientData?.name}
+                  {selectedPatientData?.phone && ` · ${selectedPatientData.phone}`}
+                </p>
+              );
+            })()}
           </div>
 
           <div className="space-y-2">
@@ -2305,7 +2175,7 @@ function AppointmentDialog({
             <div className="space-y-3 border-b pb-4">
               <div className="space-y-2">
                 <Label htmlFor="total-price" className="text-sm font-medium">
-                  Общая стоимость визита <span className="text-destructive">*</span>
+                  Общая стоимость визита
                 </Label>
                 <p className="text-xs text-muted-foreground">
                   Введите общую стоимость всех услуг за этот визит
