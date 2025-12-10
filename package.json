@@ -14,7 +14,7 @@
     "server": "tsx backend/src/server.ts",
     "server:dev": "tsx watch backend/src/server.ts",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build && node scripts/set-platform.mjs web"
+    "tauri:build": "node scripts/set-platform.mjs desktop && tauri build && node scripts/set-platform.mjs web"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import config from "../../public/config.json";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -7,15 +8,15 @@ export function cn(...inputs: ClassValue[]) {
 
 /**
  * Check if running in Tauri desktop app
- * Tauri automatically injects __TAURI__ into the window object
+ * Reads from config.json which is set at build time via set-platform.mjs
  */
 export function isDesktop(): boolean {
-  return typeof window !== "undefined" && "__TAURI__" in window;
+  return config.platform === "desktop";
 }
 
 /**
  * Check if running in web browser (not Tauri)
  */
 export function isWeb(): boolean {
-  return !isDesktop();
+  return config.platform === "web";
 }
